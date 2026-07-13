@@ -6,9 +6,12 @@
  * @module social
  */
 
-export { Relationship } from './Relationship.js';
-export { ReputationSystem } from './ReputationSystem.js';
-export { SocialNetwork } from './SocialNetwork.js';
+import { Relationship } from './Relationship.js';
+import { ReputationSystem } from './ReputationSystem.js';
+import { SocialNetwork } from './SocialNetwork.js';
+
+// Re-export for external use
+export { Relationship, ReputationSystem, SocialNetwork };
 
 /**
  * Integrated Social System
