@@ -1729,6 +1729,77 @@ const templates = [
   }
 
   // Returns the filename (not the full path) of the newest `*.json` save in
+  // T7-Hygiene: Bounded save-dir retention. Deletes the oldest `.json` files
+  // in `saveDir` until at most `keepLast` remain (sorted by mtime, newest
+  // first). Errors deleting individual files are swallowed — pruning is a
+  // best-effort housekeeping step, not a correctness requirement.
+  static pruneOldSaves(saveDir, keepLast = 5) {
+    let names;
+    try {
+      names = fs.readdirSync(saveDir);
+    } catch (_) {
+      return;
+    }
+    const files = [];
+    for (const name of names) {
+      if (!name.endsWith('.json')) continue;
+      let mtime;
+      try {
+        mtime = fs.statSync(path.join(saveDir, name)).mtimeMs;
+      } catch (_) {
+        continue;
+      }
+      files.push({ f: name, t: mtime });
+    }
+    files.sort((a, b) => b.t - a.t);
+    for (const old of files.slice(keepLast)) {
+      try { fs.unlinkSync(path.join(saveDir, old.f)); } catch (_) {}
+    }
+  }
+
+  // T7-Hygiene: Read+parse+validate a save file. Returns
+  // `{ ok: true, data, stats }` for loadable saves and
+  // `{ ok: false, error: string, reason: 'missing'|'too-large'|'future-schema'|'parse'|'stat' }`
+  // otherwise. Centralizes the size-cap (50 MB) and future-schema rejection
+  // so all four UIs share the same guardrails and tests have one place to
+  // exercise them.
+  static readSaveFile(filepath, maxBytes = 50 * 1024 * 1024) {
+    let stats;
+    try {
+      stats = fs.statSync(filepath);
+    } catch (_) {
+      return { ok: false, error: `Save file not found: ${filepath}`, reason: 'missing' };
+    }
+    if (stats.size > maxBytes) {
+      return {
+        ok: false,
+        error: `Refusing to load ${path.basename(filepath)}: size ${(stats.size / (1024 * 1024)).toFixed(1)} MB exceeds ${(maxBytes / (1024 * 1024)).toFixed(0)} MB cap.`,
+        reason: 'too-large'
+      };
+    }
+    let raw;
+    try {
+      raw = fs.readFileSync(filepath, 'utf8');
+    } catch (e) {
+      return { ok: false, error: `Failed to read ${filepath}: ${e.message}`, reason: 'stat' };
+    }
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (parseErr) {
+      return { ok: false, error: `Invalid JSON in ${path.basename(filepath)}: ${parseErr.message}`, reason: 'parse' };
+    }
+    if (typeof data?.schemaVersion === 'number' && data.schemaVersion > SAVE_SCHEMA_VERSION) {
+      return {
+        ok: false,
+        error: `Refusing to load ${path.basename(filepath)}: schemaVersion=${data.schemaVersion} is newer than supported (${SAVE_SCHEMA_VERSION}).`,
+        reason: 'future-schema'
+      };
+    }
+    return { ok: true, data, stats };
+  }
+
+  // Returns the basename of the most-recently-modified `.json` file in
   // `saveDir`, picked by mtime. Returns `null` if the directory is missing,
   // unreadable, or contains no `.json` saves. The four UIs use this to avoid
   // the lexicographic-name bias of `fs.readdirSync().sort().reverse()[0]`,

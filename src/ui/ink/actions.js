@@ -281,6 +281,7 @@ export class Actions {
       const fname = `save_${player?.name || 'anon'}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
       const full = path.join(dir, fname);
       fs.writeFileSync(full, JSON.stringify(data, null, 2));
+      try { Game.pruneOldSaves(dir, 5); } catch (_) {}
       this._emit(`${G.book}  Saved to ${full}`, 'success');
     } catch (e) {
       this._emit(`Save failed: ${e.message}`, 'error');
@@ -295,8 +296,26 @@ export class Actions {
       if (!fs.existsSync(dir)) { this._emit('No saves found.', 'error'); return; }
       const latest = Game.latestSaveFile(dir);
       if (!latest) { this._emit('No saves found.', 'error'); return; }
+      const filepath = path.join(dir, latest);
+      // T7-Hygiene: refuse oversized or future-schema saves.
+      const latestStats = fs.statSync(filepath);
+      if (latestStats.size > 50 * 1024 * 1024) {
+        this._emit(`Refusing to load ${latest}: size ${(latestStats.size / (1024 * 1024)).toFixed(1)} MB exceeds 50 MB cap.`, 'error');
+        return;
+      }
+      const rawData = fs.readFileSync(filepath, 'utf8');
+      let data;
+      try {
+        data = JSON.parse(rawData);
+      } catch (parseErr) {
+        this._emit(`Load failed: invalid JSON in ${latest} (${parseErr.message})`, 'error');
+        return;
+      }
+      if (typeof data?.schemaVersion === 'number' && data.schemaVersion > Game.SAVE_SCHEMA_VERSION) {
+        this._emit(`Refusing to load ${latest}: schemaVersion=${data.schemaVersion} is newer than supported (${Game.SAVE_SCHEMA_VERSION}).`, 'error');
+        return;
+      }
       this._emit(`${G.book}  Latest save: ${latest}  (auto-loaded)`, 'info');
-      const data = JSON.parse(fs.readFileSync(path.join(dir, latest), 'utf8'));
       this.game.load(data);
       this._emit(`${G.fleur}  Loaded.`, 'success');
     } catch (e) {

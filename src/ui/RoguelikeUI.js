@@ -768,6 +768,7 @@ export class RoguelikeUI {
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `save_${this.game.player?.name || 'unknown'}_${ts}.json`;
       fs.writeFileSync(path.join(saveDir, filename), JSON.stringify(saveData, null, 2));
+      try { Game.pruneOldSaves(saveDir, 5); } catch (_) {}
       this.log(`Game saved to: ${filename}`, 'success');
     } catch (error) {
       this.log(`Failed to save: ${error.message}`, 'error');
@@ -797,7 +798,25 @@ export class RoguelikeUI {
       if (!fs.existsSync(saveDir)) { this.log('No saves directory found.', 'error'); return; }
       const latest = Game.latestSaveFile(saveDir);
       if (!latest) { this.log('No save files found.', 'error'); return; }
-      const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
+      const filepath = path.join(saveDir, latest);
+      // T7-Hygiene: refuse oversized or future-schema saves.
+      const latestStats = fs.statSync(filepath);
+      if (latestStats.size > 50 * 1024 * 1024) {
+        this.log(`Refusing to load ${latest}: size ${(latestStats.size / (1024 * 1024)).toFixed(1)} MB exceeds 50 MB cap.`, 'error');
+        return;
+      }
+      const rawData = fs.readFileSync(filepath, 'utf8');
+      let data;
+      try {
+        data = JSON.parse(rawData);
+      } catch (parseErr) {
+        this.log(`Load failed: invalid JSON in ${latest} (${parseErr.message})`, 'error');
+        return;
+      }
+      if (typeof data?.schemaVersion === 'number' && data.schemaVersion > Game.SAVE_SCHEMA_VERSION) {
+        this.log(`Refusing to load ${latest}: schemaVersion=${data.schemaVersion} is newer than supported (${Game.SAVE_SCHEMA_VERSION}).`, 'error');
+        return;
+      }
       const result = this.game.load(data);
       if (result.success) {
         this.log(`Loaded: ${latest}`, 'success');

@@ -2144,6 +2144,8 @@ updateDisplay() {
 
       fs.writeFileSync(filepath, JSON.stringify(saveData, null, 2));
 
+      try { Game.pruneOldSaves(saveDir, 5); } catch (_) {}
+
       this.log(`Game saved to: ${filename}`, 'success');
     } catch (error) {
       this.log(`Failed to save: ${error.message}`, 'error');
@@ -2180,7 +2182,24 @@ updateDisplay() {
         return;
       }
       const filepath = path.join(saveDir, latest);
-      const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+      // T7-Hygiene: refuse oversized or future-schema saves before parsing.
+      const latestStats = fs.statSync(filepath);
+      if (latestStats.size > 50 * 1024 * 1024) {
+        this.log(`Refusing to load ${latest}: size ${(latestStats.size / (1024 * 1024)).toFixed(1)} MB exceeds 50 MB cap.`, 'error');
+        return;
+      }
+      const rawData = fs.readFileSync(filepath, 'utf8');
+      let data;
+      try {
+        data = JSON.parse(rawData);
+      } catch (parseErr) {
+        this.log(`Load failed: invalid JSON in ${latest} (${parseErr.message})`, 'error');
+        return;
+      }
+      if (typeof data?.schemaVersion === 'number' && data.schemaVersion > Game.SAVE_SCHEMA_VERSION) {
+        this.log(`Refusing to load ${latest}: schemaVersion=${data.schemaVersion} is newer than supported (${Game.SAVE_SCHEMA_VERSION}).`, 'error');
+        return;
+      }
       const result = this.game.load(data);
       if (result.success) {
         this.log(`Loaded: ${latest}`, 'success');
