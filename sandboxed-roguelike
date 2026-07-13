@@ -1,0 +1,14 @@
+#!/bin/bash
+# Medieval Life Simulation - Roguelike Edition
+# Comprehensive TUI similar to GnollHack and Cataclysm: Dark Days Ahead
+
+cd "$(dirname "$0")"
+
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+    echo "Installing dependencies..."
+    npm install
+fi
+
+# Run with roguelike UI
+node src/main-roguelike.js "$@"

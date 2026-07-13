@@ -1,0 +1,35 @@
+# Node.js / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+# Rust / cargo
+crates/sim/target/
+crates/sim/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Game artifacts
+saves/*.json
+!saves/.gitkeep
+simulation-output/
+*.log
+
+# Local secrets / config
+.env
+.env.local
+*.local
+
+# kB caches
+.kilo/cache/
+.kilo/worktrees/

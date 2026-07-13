@@ -1,0 +1,26 @@
+[package]
+name = "sim"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the medieval-life-sim Node simulation kernel"
+license = "MIT"
+
+[lib]
+name = "sim"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oracle"
+path = "src/bin/oracle.rs"
+
+[[bin]]
+name = "parity-check"
+path = "src/bin/parity_check.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
