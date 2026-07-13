@@ -18,6 +18,7 @@ import {
 import { GameQuery } from '../core/GameQuery.js';
 import { Combat } from '../systems/Combat.js';
 import { performQuit } from './quitConfirm.js';
+import { Game } from '../Game.js';
 
 const FOCUSABLE_PANELS = [
   'map', 'location', 'status', 'sparklines', 'factions',
@@ -2160,12 +2161,11 @@ updateDisplay() {
         this.log('No saves directory found.', 'error');
         return;
       }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
-      if (files.length === 0) {
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) {
         this.log('No save files found.', 'error');
         return;
       }
-      const latest = files.sort().reverse()[0];
       const filepath = path.join(saveDir, latest);
       const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       const result = this.game.load(data);

@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { Combat } from '../systems/Combat.js';
 import { performQuit } from './quitConfirm.js';
+import { Game } from '../Game.js';
 
 export class GameUI {
   constructor(game) {
@@ -457,9 +458,8 @@ export class GameUI {
     try {
       const saveDir = path.join(process.cwd(), 'saves');
       if (!fs.existsSync(saveDir)) { console.log('No saves directory.'); return; }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
-      if (files.length === 0) { console.log('No save files.'); return; }
-      const latest = files.sort().reverse()[0];
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) { console.log('No save files.'); return; }
       const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
       const result = this.game.load(data);
       if (result.success) console.log(`Loaded: ${latest}`);
