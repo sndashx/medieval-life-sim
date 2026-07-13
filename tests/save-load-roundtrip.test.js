@@ -8,6 +8,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeGameWithPlayer } from './_helpers.js';
+import { Person } from '../src/character/Person.js';
+import { Physiology } from '../src/character/Physiology.js';
 
 function fingerprint(game) {
   const ents = [];
@@ -67,15 +69,21 @@ test('integration: load rebinds _kernel on every Person entity (JSON-roundtrippe
 
   assert.equal(b.player._kernel, b.kernel, 'player._kernel should be the loaded kernel');
   let checked = 0;
+  let checkedClass = 0;
   for (const entity of b.kernel.entities.values()) {
     if (!entity) continue;
     const looksLikePerson = entity.isPerson === true ||
       (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean');
     if (!looksLikePerson) continue;
     assert.equal(entity._kernel, b.kernel, `Person ${entity.id} _kernel not rebound after JSON load`);
+    assert.ok(entity instanceof Person, `Person ${entity.id} should be a real Person instance, got ${entity.constructor.name}`);
+    assert.equal(typeof entity.update, 'function', `Person ${entity.id} should have an update() method`);
+    assert.ok(entity.physiology instanceof Physiology, `Person ${entity.id} should have a Physiology instance`);
     checked++;
+    if (entity instanceof Person) checkedClass++;
   }
   assert.ok(checked > 0, 'expected at least one Person in the loaded world');
+  assert.ok(checkedClass > 0, 'expected at least one Person to be rehydrated as a real Person instance');
   const lit = b.player.nextInterestingTurn;
   assert.ok(typeof lit === 'number' && Number.isFinite(lit), 'nextInterestingTurn should be a finite number');
   assert.ok(Math.abs(lit - b.kernel.turn) <= 60, `nextInterestingTurn ${lit} should be within 60 turns of kernel turn ${b.kernel.turn}`);

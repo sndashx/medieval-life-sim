@@ -1380,17 +1380,63 @@ const templates = [
       
       this.kernel.load(saveData.kernel);
 
-      for (const entity of this.kernel.entities.values()) {
+      // Rehydrate plain JSON-roundtripped Person snapshots into real Person
+      // instances. kernel.load() stores `new Map(saveData.entities)`, whose
+      // values are toJSON snapshots — plain objects with no class methods,
+      // no physiology/needs/skills/inventory class instances, and no `_kernel`.
+      // Without this step the rest of Game.load (which checks
+      // `entity.isPerson`, calls `entity.fromJSON`, `entity.inventory._recomputeWeight`,
+      // `entity.physiology.checkVitals`, etc.) operates on props-less objects
+      // and silently no-ops. Rebuild each Person using the saved snapshot as
+      // the constructor template, then call fromJSON() to restore the toJSON
+      // fields (cached health, goals, memory ring, etc.).
+      const savedEntitiesById = new Map();
+      if (saveData.kernel && Array.isArray(saveData.kernel.entities)) {
+        for (const [id, ent] of saveData.kernel.entities) savedEntitiesById.set(id, ent);
+      }
+      for (const [id, entity] of Array.from(this.kernel.entities.entries())) {
         if (!entity) continue;
-        // Live Person instances: entity.isPerson set in constructor.
-        // JSON-roundtripped Person snapshots (Person.toJSON output): carry
-        // `isPerson: true` but are plain objects without `_kernel`.
-        const isPersonShape =
-          entity.isPerson === true ||
-          (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean');
-        if (isPersonShape && entity._kernel !== this.kernel) {
-          entity._kernel = this.kernel;
+        const looksLikePerson = entity.isPerson === true ||
+          (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean' && entity.type === 'person');
+        if (!looksLikePerson) continue;
+        if (entity instanceof Person) continue;
+        const saved = savedEntitiesById.get(id) || entity;
+        const template = {
+          name: saved.name,
+          age: saved.age,
+          sex: saved.sex,
+          genetics: saved.genetics,
+          position: saved.position,
+          household: saved.household,
+          occupation: saved.occupation,
+          isPlayer: saved.isPlayer
+        };
+        const rehydrated = new Person(id, template, this.kernel);
+        if (typeof rehydrated.fromJSON === 'function') rehydrated.fromJSON(saved);
+        this.kernel.entities.set(id, rehydrated);
+      }
+
+      // Same story for Household entities: kernel.load() drops them as plain
+      // objects, which breaks `playerHousehold.consumeFood` and similar.
+      for (const [id, entity] of Array.from(this.kernel.entities.entries())) {
+        if (!entity) continue;
+        if (entity.type !== 'household') continue;
+        if (typeof entity.consumeFood === 'function') continue;
+        const saved = savedEntitiesById.get(id) || entity;
+        const rehydrated = new Household(id, saved.location || { x: 0, y: 0, z: 0, settlementId: 0 });
+        rehydrated.type = 'household';
+        rehydrated.isPerson = false;
+        rehydrated.mass = 0;
+        if (Array.isArray(saved.members)) rehydrated.members = saved.members;
+        rehydrated.head = saved.head ?? null;
+        rehydrated.wealth = saved.wealth ?? 0;
+        rehydrated.food = saved.food ?? 100;
+        if (saved.resources instanceof Map || Array.isArray(saved.resources)) {
+          rehydrated.resources = new Map(saved.resources);
         }
+        if (Array.isArray(saved.property)) rehydrated.property = saved.property;
+        if (Array.isArray(saved.debts)) rehydrated.debts = saved.debts;
+        this.kernel.entities.set(id, rehydrated);
       }
 
       const worldGen = new WorldGenerator(saveData.world.seed);
