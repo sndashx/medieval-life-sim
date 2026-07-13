@@ -25,7 +25,7 @@ export class NarrativeChronicle {
     const entry = {
       text,
       turn: this.kernel?.turn || 0,
-      timestamp: Date.now(),
+      timestamp: Date.now(), // AUDIT-WHITELIST: chronicle wall-clock for player-facing display only, not in any deterministic path
       type: metadata.type || 'general',
       participants: metadata.participants || [],
       location: metadata.location || null,

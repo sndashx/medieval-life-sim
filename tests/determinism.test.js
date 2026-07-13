@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeGame, makeGameWithPlayer, installMathRandomSpy, getMathRandomSites } from './_helpers.js';
+import { makeGame, makeGameWithPlayer, installMathRandomSpy, restoreMathRandom, getMathRandomSites, getSpyDepth } from './_helpers.js';
 
 // Determinism contract: same seed → identical state at a fixed turn.
 
@@ -41,13 +41,13 @@ test('determinism: different seeds diverge (sanity check)', () => {
 test('determinism: Math.random() audit — log any unseeded call sites so they can be fixed', () => {
   // Clear any prior captures
   getMathRandomSites().length = 0;
-  const restore = installMathRandomSpy();
+  installMathRandomSpy();
 
   try {
     const game = makeGameWithPlayer(7777);
     game.advanceTurns(200);
   } finally {
-    restore();
+    restoreMathRandom();
   }
 
   const sites = getMathRandomSites();
@@ -62,4 +62,35 @@ test('determinism: Math.random() audit — log any unseeded call sites so they c
   // (Passing here makes it informational; flip to assert.equal(sites.length, 0)
   //  once all sites are migrated to the kernel RNG.)
   assert.ok(Array.isArray(sites));
+});
+
+test('math-random-spy: reference-counted nested install/restore leaves Math.random unchanged', () => {
+  // Snapshot the original Math.random for this test.
+  const originalBefore = Math.random;
+  const beforeDepth = getSpyDepth();
+
+  installMathRandomSpy();
+  assert.equal(getSpyDepth(), beforeDepth + 1);
+  assert.notEqual(Math.random, originalBefore, 'Spy should be installed');
+  assert.equal(Math.random(), 0.5, 'Spy should return 0.5');
+
+  // Nested install — depth increases, spy remains installed.
+  installMathRandomSpy();
+  assert.equal(getSpyDepth(), beforeDepth + 2);
+  assert.equal(Math.random(), 0.5, 'Nested spy still returns 0.5');
+
+  // First restore decrements but keeps spy installed.
+  restoreMathRandom();
+  assert.equal(getSpyDepth(), beforeDepth + 1);
+  assert.notEqual(Math.random, originalBefore, 'Spy still installed after one restore');
+
+  // Final restore brings us back to original.
+  restoreMathRandom();
+  assert.equal(getSpyDepth(), beforeDepth);
+  assert.equal(Math.random, originalBefore, 'Math.random should be restored to original');
+
+  // Extra restore is a no-op (defensive).
+  restoreMathRandom();
+  assert.equal(getSpyDepth(), beforeDepth);
+  assert.equal(Math.random, originalBefore);
 });

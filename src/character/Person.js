@@ -75,6 +75,71 @@ export class Person {
     this.update = Person.prototype.update;
   }
 
+  /**
+   * Build a Person from a saved snapshot WITHOUT drawing RNG. The standard
+   * constructor calls `generateGenetics`, `generatePersonality`, and a
+   * `nextInt` for `nextInterestingTurn` — those advance the kernel RNG and
+   * overwrite the saved personality. `fromSnapshot` reconstructs the same
+   * Person shape using only the saved values, so post-load kernel RNG state
+   * matches the saved state exactly.
+   */
+  static fromSnapshot(snapshot, kernel) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new Error('Person.fromSnapshot: snapshot required');
+    }
+    const p = Object.create(Person.prototype);
+    p.id = snapshot.id;
+    p._kernel = kernel;
+    p.name = snapshot.name;
+    p.age = snapshot.age || 0;
+    p.sex = snapshot.sex;
+    p.genetics = snapshot.genetics || { height: 170, baseWeight: 70, eyeColor: 'brown', hairColor: 'black', skinTone: 0.5 };
+    p.physiology = snapshot.physiology && typeof snapshot.physiology.checkVitals === 'function'
+      ? snapshot.physiology
+      : new Physiology(p.age, p.sex, p.genetics, kernel);
+    Object.defineProperty(p.physiology, '_owner', { value: p, writable: true, enumerable: false, configurable: true });
+    p.needs = snapshot.needs && typeof snapshot.needs.tick === 'function'
+      ? snapshot.needs
+      : new Needs(p.physiology);
+    p.skills = snapshot.skills && typeof snapshot.skills.get === 'function'
+      ? snapshot.skills
+      : new Skills();
+    p.inventory = snapshot.inventory && typeof snapshot.inventory._recomputeWeight === 'function'
+      ? snapshot.inventory
+      : new Inventory(50);
+    p.position = snapshot.position || { x: 0, y: 0, z: 0 };
+    p.household = snapshot.household ?? null;
+    p.occupation = snapshot.occupation || 'peasant';
+    p.relationships = snapshot.relationships instanceof Map
+      ? snapshot.relationships
+      : (Array.isArray(snapshot.relationships) ? new Map(snapshot.relationships) : new Map());
+    p.marriage = snapshot.marriage === undefined ? null : snapshot.marriage;
+    p.kinship = snapshot.kinship || { mother: null, father: null, children: [], siblings: [] };
+    p.personality = snapshot.personality || { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, courage: 0.5, ambition: 0.5, compassion: 0.5 };
+    p.memory = snapshot.memory && typeof snapshot.memory.remember === 'function'
+      ? snapshot.memory
+      : new Memory(kernel);
+    p.goals = null;
+    p.currentAction = null;
+    p.lastUrgentNeeds = 0;
+    p.isPlayer = !!snapshot.isPlayer;
+    p.alive = snapshot.alive !== false;
+    p.deathCause = snapshot.deathCause || null;
+    p.deathTurn = snapshot.deathTurn || null;
+    p._hungerCriticalSince = -1;
+    p.type = 'person';
+    p.isPerson = true;
+    p.aaaBridge = null;
+    p.nextInterestingTurn = typeof snapshot.nextInterestingTurn === 'number'
+      ? snapshot.nextInterestingTurn
+      : (kernel ? kernel.turn : 0);
+    p._cachedHealth = null;
+    p._cachedHealthTurn = -1;
+    p._goalsStale = true;
+    p.update = Person.prototype.update;
+    return p;
+  }
+
   generateGenetics(rng) {
     const r = rng || { next: () => { throw new Error('rng required for Person.generateGenetics'); }, nextInt: (a, b) => { throw new Error('rng required for Person.generateGenetics'); } };
     return {
@@ -610,6 +675,18 @@ export class Person {
    */
   toJSON() {
     const data = {
+      isPerson: true,
+      id: this.id,
+      name: this.name,
+      age: this.age,
+      sex: this.sex,
+      genetics: this.genetics,
+      personality: this.personality,
+      position: this.position,
+      household: this.household,
+      occupation: this.occupation,
+      isPlayer: this.isPlayer,
+      alive: this.alive,
       _cachedHealth: this._cachedHealth || null,
       _cachedHealthTurn: this._cachedHealthTurn,
       nextInterestingTurn: this.nextInterestingTurn,

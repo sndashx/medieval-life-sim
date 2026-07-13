@@ -16,6 +16,9 @@ import {
   formatGameTime,
 } from './theme.js';
 import { GameQuery } from '../core/GameQuery.js';
+import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
+import { Game } from '../Game.js';
 
 const FOCUSABLE_PANELS = [
   'map', 'location', 'status', 'sparklines', 'factions',
@@ -321,14 +324,14 @@ export class BlessedGameUI {
   }
 
   setupKeybindings() {
-    this.screen.key(['C-c'], () => process.exit(0));
+    this.screen.key(['C-c'], () => this._confirmQuit());
     this.screen.key(['escape'], () => {
       if (this._helpOverlay && !this._helpOverlay.hidden) { this._toggleHelpOverlay(); return; }
       if (this._heirPicker && !this._heirPicker.hidden) { this._closeHeirPicker(); return; }
       if (this._creationWizard && !this._creationWizard.hidden) { this._closeCharacterCreation(); return; }
-      return process.exit(0);
+      return this._confirmQuit();
     });
-    this.screen.key(['q'], () => process.exit(0));
+    this.screen.key(['q'], () => this._confirmQuit());
 
     this.screen.key(['tab'], () => {
       if (this.screen.focused === this.commandInput) return;
@@ -351,6 +354,13 @@ export class BlessedGameUI {
         this._commandHistory.push(trimmed);
         if (this._commandHistory.length > 50) this._commandHistory.shift();
         this._commandHistoryIdx = this._commandHistory.length;
+        if (this._quitConfirmPending) {
+          this._resolveQuitConfirm(trimmed);
+          this.commandInput.clearValue();
+          this._commandHistoryIdx = this._commandHistory.length;
+          this.screen.render();
+          return;
+        }
         this.handleCommand(trimmed);
       }
       this.commandInput.clearValue();
@@ -1626,8 +1636,8 @@ updateDisplay() {
       'heirs': () => this.listHeirs(),
       'save': () => this.save(),
       'load': () => this.load(),
-      'quit': () => process.exit(0),
-      'exit': () => process.exit(0)
+      'quit': () => this._confirmQuit(),
+      'exit': () => this._confirmQuit()
     };
     
     if (commands[command]) {
@@ -2123,21 +2133,38 @@ updateDisplay() {
     try {
       const saveData = this.game.save();
       const saveDir = path.join(process.cwd(), 'saves');
-      
+
       if (!fs.existsSync(saveDir)) {
         fs.mkdirSync(saveDir, { recursive: true });
       }
-      
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `save_${this.game.player?.name || 'unknown'}_${timestamp}.json`;
       const filepath = path.join(saveDir, filename);
-      
+
       fs.writeFileSync(filepath, JSON.stringify(saveData, null, 2));
-      
+
       this.log(`Game saved to: ${filename}`, 'success');
     } catch (error) {
       this.log(`Failed to save: ${error.message}`, 'error');
     }
+  }
+
+  _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    this.log('Save before quitting? [y/N/cancel] (type your answer and press Enter)', 'system');
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' y/N/cancel '); } catch (_) {}
+    if (this.commandInput && typeof this.commandInput.focus === 'function') {
+      try { this.commandInput.focus(); this.screen.render(); } catch (_) {}
+    }
+  }
+
+  async _resolveQuitConfirm(input) {
+    const answer = await performQuit(this, (_q, cb) => cb(input));
+    this._quitConfirmPending = false;
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' Command [Tab: autocomplete] '); } catch (_) {}
+    return answer;
   }
 
   load() {
@@ -2147,12 +2174,11 @@ updateDisplay() {
         this.log('No saves directory found.', 'error');
         return;
       }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
-      if (files.length === 0) {
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) {
         this.log('No save files found.', 'error');
         return;
       }
-      const latest = files.sort().reverse()[0];
       const filepath = path.join(saveDir, latest);
       const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       const result = this.game.load(data);
@@ -2318,7 +2344,7 @@ updateDisplay() {
       item = browse.items[idx - 1];
     } else {
       const q = args.join(' ').toLowerCase();
-      item = browse.items.find(i => i.subtype.toLowerCase().includes(q));
+      item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(q) : false));
     }
     if (!item) return this.log('No matching item here.', 'error');
     const qty = parseInt(args[args.length - 1], 10);
@@ -2364,7 +2390,7 @@ updateDisplay() {
     if (!shop) return this.log('No shops nearby.', 'error');
     const browse = this.game.trading.browseShop(shop.id);
     if (!browse.success) return this.log(browse.reason, 'error');
-    const item = browse.items.find(i => i.subtype.toLowerCase().includes(itemName.toLowerCase()));
+    const item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false));
     if (!item) return this.log('Item not stocked here.', 'error');
     const r = this.game.trading.haggle(player, shop.id, item.type, item.subtype, targetPrice);
     this.log(r.success ? r.message : `Refused: ${r.reason}`, r.success ? 'success' : 'error');
@@ -2573,7 +2599,7 @@ updateDisplay() {
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(p => p && p.name && p !== player && p.name.toLowerCase().includes(args[0].toLowerCase()));
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
-    const r = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const r = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     if (r.hit) {
       this.log(`Hit ${target.name} in ${r.location} for ${(r.damage*100).toFixed(0)}% damage.`, 'combat');

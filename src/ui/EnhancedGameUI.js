@@ -2,6 +2,8 @@ import readline from 'readline';
 import { stdin as input, stdout as output } from 'process';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
 
 export class EnhancedGameUI {
   constructor(game) {
@@ -58,6 +60,12 @@ export class EnhancedGameUI {
       this.log('Goodbye!', 'system');
       process.exit(0);
     });
+
+    if (typeof process !== 'undefined') {
+      const handleSig = () => this._confirmQuit();
+      process.on('SIGINT', handleSig);
+      process.on('SIGTERM', handleSig);
+    }
   }
 
   clearScreen() {
@@ -1246,8 +1254,8 @@ export class EnhancedGameUI {
     for (const shop of shops) {
       const result = this.game.trading.browseShop(shop.id);
       if (result.success) {
-        const item = result.items.find(i => 
-          i.subtype.toLowerCase().includes(itemName.toLowerCase())
+        const item = result.items.find(i =>
+          (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false)
         );
         if (item) {
           foundShop = shop;
@@ -1371,8 +1379,8 @@ export class EnhancedGameUI {
     for (const shop of shops) {
       const result = this.game.trading.browseShop(shop.id);
       if (result.success) {
-        const item = result.items.find(i => 
-          i.subtype.toLowerCase().includes(itemName.toLowerCase())
+        const item = result.items.find(i =>
+          (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false)
         );
         if (item) {
           foundShop = shop;
@@ -1422,9 +1430,9 @@ export class EnhancedGameUI {
     const resources = this.game.naturalWorld.resources.get(tileKey) || [];
     
     // Find matching resource
-    const resource = resources.find(r => 
+    const resource = resources.find(r =>
       r.type.toLowerCase().includes(resourceType) ||
-      r.subtype.toLowerCase().includes(resourceType)
+      (r.subtype ? r.subtype.toLowerCase().includes(resourceType) : false)
     );
     
     if (!resource) {
@@ -1501,9 +1509,9 @@ export class EnhancedGameUI {
       if (!plant) return;
     } else {
       const plantName = args.join(' ').toLowerCase();
-      plant = harvestable.find(p => 
+      plant = harvestable.find(p =>
         p.type.toLowerCase().includes(plantName) ||
-        p.subtype.toLowerCase().includes(plantName)
+        (p.subtype ? p.subtype.toLowerCase().includes(plantName) : false)
       );
       
       if (!plant) {
@@ -1944,7 +1952,7 @@ export class EnhancedGameUI {
     }
     
     const weapon = player.inventory.find(i => i.type === 'weapon');
-    const result = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const result = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     
     this.game.advanceTurns(1);
     
@@ -3347,9 +3355,24 @@ export class EnhancedGameUI {
     else this.log('Council session failed.', 'error');
   }
 
+  async _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    try {
+      const answer = await performQuit(this);
+      if (answer === 'save-exit' || answer === 'exit-on-save-fail' || answer === 'exit') {
+        this.log('Ending life...', 'system');
+        try { this.rl.close(); } catch (_) {}
+      } else if (answer === 'cancel') {
+        try { this.rl.prompt(); } catch (_) {}
+      }
+    } finally {
+      this._quitConfirmPending = false;
+    }
+  }
+
   quit() {
-    this.log('Ending life...', 'system');
-    this.rl.close();
+    return this._confirmQuit();
   }
 
   // Utility methods

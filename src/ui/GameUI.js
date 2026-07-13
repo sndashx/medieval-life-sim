@@ -11,6 +11,9 @@
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
+import { Game } from '../Game.js';
 
 export class GameUI {
   constructor(game) {
@@ -69,7 +72,7 @@ export class GameUI {
       'load': () => this.load(),
       'continue': () => this.continueAsHeir(args),
       'heirs': () => this.listHeirs(),
-      'quit': () => process.exit(0)
+      'quit': () => this._confirmQuit()
     };
     if (commands[command]) {
       try { commands[command](); }
@@ -126,7 +129,7 @@ export class GameUI {
   look() {
     const player = this.game.getPlayer();
     if (!player) { console.log('No active character. Use "start" to begin.'); return; }
-    const tile = this.game.world.getTile(player.position.x, player.position.y);
+    const tile = this.game.world.getTile(player.position.x, player.position.y) ?? { biome: { type: 'unknown' }, terrain: { elevation: 0 }, climate: { temperature: 0 } };
     const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, player.position.z, 10);
     console.log(`\n=== ${tile.biome.type.toUpperCase()} ===`);
     console.log(`Elevation: ${Math.floor(tile.terrain.elevation)}m | Temp: ${Math.floor(tile.climate.temperature)}°C`);
@@ -410,7 +413,7 @@ export class GameUI {
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(e => e && e.name && e.name.toLowerCase().includes(args.join(' ').toLowerCase()));
     if (!target) { console.log('Target not found nearby.'); return; }
     const weapon = player.inventory.find(i => i.type === 'weapon');
-    const result = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const result = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     if (result.hit) console.log(`Hit ${target.name} in the ${result.location} for ${(result.damage*100).toFixed(0)}% damage.`);
     else console.log(`You miss ${target.name}.`);
@@ -423,6 +426,21 @@ export class GameUI {
   }
 
   toggleDevMode() { this.devMode = !this.devMode; console.log(`Developer mode: ${this.devMode ? 'ON' : 'OFF'}`); }
+
+  async _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    try {
+      const answer = await performQuit(this);
+      if (answer === 'save-exit' || answer === 'exit-on-save-fail' || answer === 'exit') {
+        try { this.rl.close(); } catch (_) {}
+      } else if (answer === 'cancel') {
+        try { this.rl.prompt(); } catch (_) {}
+      }
+    } finally {
+      this._quitConfirmPending = false;
+    }
+  }
 
   save() {
     try {
@@ -440,9 +458,8 @@ export class GameUI {
     try {
       const saveDir = path.join(process.cwd(), 'saves');
       if (!fs.existsSync(saveDir)) { console.log('No saves directory.'); return; }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
-      if (files.length === 0) { console.log('No save files.'); return; }
-      const latest = files.sort().reverse()[0];
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) { console.log('No save files.'); return; }
       const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
       const result = this.game.load(data);
       if (result.success) console.log(`Loaded: ${latest}`);

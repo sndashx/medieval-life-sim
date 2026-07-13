@@ -2,6 +2,9 @@ import blessed from 'blessed';
 import contrib from 'blessed-contrib';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
+import { Game } from '../Game.js';
 
 export class RoguelikeUI {
   constructor(game) {
@@ -147,7 +150,7 @@ export class RoguelikeUI {
   }
 
   setupKeybindings() {
-    this.screen.key(['escape', 'C-c'], () => process.exit(0));
+    this.screen.key(['escape', 'C-c'], () => this._confirmQuit());
     this.screen.key([':', 'enter'], () => this.commandInput.focus());
     this.screen.key(['tab'], () => this.cyclePanels());
     this.screen.key(['m'], () => { this.mapBox.focus(); this.selectedPanel = 'map'; this.screen.render(); });
@@ -161,6 +164,13 @@ export class RoguelikeUI {
     
     this.commandInput.on('submit', (value) => {
       if (value) {
+        if (this._quitConfirmPending) {
+          this._resolveQuitConfirm(value.trim());
+          this.commandInput.clearValue();
+          this.commandInput.focus();
+          this.screen.render();
+          return;
+        }
         this.handleCommand(value);
         this.commandInput.clearValue();
       }
@@ -453,7 +463,7 @@ export class RoguelikeUI {
       'eat': () => this.eat(args), 'e': () => this.eat(args),
       'sleep': () => this.sleep(), 's': () => this.sleep(),
       'work': () => this.work(), 'w': () => this.work(),
-      'quit': () => process.exit(0), 'exit': () => process.exit(0),
+      'quit': () => this._confirmQuit(), 'exit': () => this._confirmQuit(),
       'continue': () => this.continueAsHeir(args),
       'heirs': () => this.listHeirs(),
       'save': () => this.save(),
@@ -764,13 +774,29 @@ export class RoguelikeUI {
     }
   }
 
+  _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    this.log('Save before quitting? [y/N/cancel] (type your answer and press Enter)', 'system');
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' y/N/cancel '); } catch (_) {}
+    if (this.commandInput && typeof this.commandInput.focus === 'function') {
+      try { this.commandInput.focus(); this.screen.render(); } catch (_) {}
+    }
+  }
+
+  async _resolveQuitConfirm(input) {
+    const answer = await performQuit(this, (_q, cb) => cb(input));
+    this._quitConfirmPending = false;
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' Command [?: help] '); } catch (_) {}
+    return answer;
+  }
+
   load() {
     try {
       const saveDir = path.join(process.cwd(), 'saves');
       if (!fs.existsSync(saveDir)) { this.log('No saves directory found.', 'error'); return; }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
-      if (files.length === 0) { this.log('No save files found.', 'error'); return; }
-      const latest = files.sort().reverse()[0];
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) { this.log('No save files found.', 'error'); return; }
       const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
       const result = this.game.load(data);
       if (result.success) {
@@ -836,7 +862,7 @@ export class RoguelikeUI {
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     if (target.alive === false) return this.log(`${target.name} is already dead.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
-    const r = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const r = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     this.log(r.hit ? `Hit ${target.name} for ${(r.damage*100).toFixed(0)}%.` : `Missed.`, 'combat');
   }
@@ -932,7 +958,7 @@ export class RoguelikeUI {
       item = browse.items[idx - 1];
     } else {
       const q = args.join(' ').toLowerCase();
-      item = browse.items.find(i => i.subtype.toLowerCase().includes(q));
+      item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(q) : false));
     }
     if (!item) return this.log('No matching item here.', 'error');
     const qty = parseInt(args[args.length - 1], 10);
@@ -978,7 +1004,7 @@ export class RoguelikeUI {
     if (!shop) return;
     const browse = this.game.trading.browseShop(shop.id);
     if (!browse.success) return this.log(browse.reason, 'error');
-    const item = browse.items.find(i => i.subtype.toLowerCase().includes(itemName.toLowerCase()));
+    const item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false));
     if (!item) return this.log('Item not stocked here.', 'error');
     const r = this.game.trading.haggle(player, shop.id, item.type, item.subtype, targetPrice);
     this.log(r.success ? r.message : `Refused: ${r.reason}`, r.success ? 'success' : 'error');

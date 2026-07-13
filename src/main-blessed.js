@@ -19,7 +19,7 @@ function parseArgs() {
     const arg = args[i];
     
     if (arg === '--seed' && args[i + 1]) {
-      config.seed = parseInt(args[++i]);
+      config.seed = parseInt(args[++i], 10);
     } else if (arg === '--aaa-preset' && args[i + 1]) {
       config.gameOptions.aaaPreset = args[++i];
     } else if (arg === '--aaa-config' && args[i + 1]) {
@@ -50,7 +50,7 @@ function parseArgs() {
       process.exit(0);
     } else if (!arg.startsWith('--') && config.seed === undefined) {
       // Legacy: first positional arg is seed
-      config.seed = parseInt(arg);
+      config.seed = parseInt(arg, 10);
     }
   }
   
@@ -137,13 +137,13 @@ const ui = new BlessedGameUI(game);
 // Start the game
 ui.start();
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nShutting down gracefully...');
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('\nShutting down gracefully...');
-  process.exit(0);
-});
+// Handle graceful shutdown — defer to the UI so it can confirm before quitting.
+const shutdown = () => {
+  if (ui && typeof ui._confirmQuit === 'function') {
+    ui._confirmQuit();
+  } else {
+    process.exit(0);
+  }
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
