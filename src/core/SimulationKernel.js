@@ -339,7 +339,8 @@ export class SimulationKernel {
       conservationLedger: this.conservationLedger,
       activeTier: Array.from(this.activeTier),
       regionalTier: Array.from(this.regionalTier.entries()),
-      distantTier: Array.from(this.distantTier.entries())
+      distantTier: Array.from(this.distantTier.entries()),
+      rngState: this.rng?.state ?? null
     };
   }
 
@@ -353,6 +354,13 @@ export class SimulationKernel {
     this.activeTier = new Set(saveData.activeTier);
     this.regionalTier = new Map(saveData.regionalTier);
     this.distantTier = new Map(saveData.distantTier);
+    // Restore RNG state so post-load simulation continues with the exact
+    // sequence of draws the pre-save world had. Without this, the kernel
+    // RNG would reset to the initial seed-derived state on every load and
+    // every downstream deterministic comparison would diverge.
+    if (this.rng && typeof saveData.rngState === 'number') {
+      this.rng.state = saveData.rngState >>> 0;
+    }
 
     this.byType.clear();
     this.bySex.male.clear();

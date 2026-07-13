@@ -4,7 +4,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import readline from 'readline';
 import { makeGameWithPlayer } from './_helpers.js';
+import { GameUI } from '../src/ui/GameUI.js';
 
 function snapshot(game) {
   const player = game.getPlayer ? game.getPlayer() : null;
@@ -50,5 +52,36 @@ test('integration: determinism holds at intermediate checkpoints', () => {
     a.advanceTurns(c - a.kernel.turn);
     b.advanceTurns(c - b.kernel.turn);
     assert.deepEqual(snapshot(a), snapshot(b), `Mismatch at turn ${c}`);
+  }
+});
+
+test('integration: GameUI.look() does not throw when player is at world edge', () => {
+  const game = makeGameWithPlayer(42);
+  const player = game.getPlayer();
+  // Force player to (0,0) so look() / move-west both query a tile that may
+  // be outside the world grid. Previously getTile() returned undefined and
+  // tile.biome.type.toUpperCase() threw.
+  player.position.x = 0;
+  player.position.y = 0;
+  // Stub a minimal readline so GameUI can construct without a TTY.
+  const origCreate = readline.createInterface;
+  readline.createInterface = () => ({
+    question: (_p, cb) => cb(''),
+    on: () => {},
+    once: (_e, cb) => cb(''),
+    close: () => {},
+    prompt: () => {},
+    removeAllListeners: () => {}
+  });
+  let ui;
+  try {
+    ui = new GameUI(game);
+    assert.doesNotThrow(() => ui.look(), 'look() at (0,0) must not throw');
+    assert.doesNotThrow(() => ui.move(['west']), 'move west at x=0 must not throw');
+    assert.doesNotThrow(() => ui.move(['west']), 'move west again must not throw');
+    assert.doesNotThrow(() => ui.move(['north']), 'move north at y=0 must not throw');
+  } finally {
+    readline.createInterface = origCreate;
+    try { ui.rl.close && ui.rl.close(); } catch (_) {}
   }
 });

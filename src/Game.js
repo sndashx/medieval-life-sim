@@ -35,7 +35,7 @@ export class Game {
     }
     
     console.log('  → Initializing simulation kernel...');
-    this.seed = seed || Date.now(); // AUDIT-WHITELIST: cli seed fallback
+    this.seed = seed == null ? Date.now() : seed; // AUDIT-WHITELIST: cli seed fallback
     this.worldConfig = worldConfig || {
       worldSize: { width: 100, height: 100 },
       settlements: 5,
@@ -1379,6 +1379,65 @@ const templates = [
       }
       
       this.kernel.load(saveData.kernel);
+
+      // Rehydrate plain JSON-roundtripped Person snapshots into real Person
+      // instances. kernel.load() stores `new Map(saveData.entities)`, whose
+      // values are toJSON snapshots — plain objects with no class methods,
+      // no physiology/needs/skills/inventory class instances, and no `_kernel`.
+      // Without this step the rest of Game.load (which checks
+      // `entity.isPerson`, calls `entity.fromJSON`, `entity.inventory._recomputeWeight`,
+      // `entity.physiology.checkVitals`, etc.) operates on props-less objects
+      // and silently no-ops.
+      //
+      // We use `Person.fromSnapshot` instead of `new Person(template, …)`:
+      // the regular constructor draws RNG for `generateGenetics`,
+      // `generatePersonality`, and `nextInterestingTurn`, which would
+      // desync the freshly-loaded kernel RNG from its saved trajectory and
+      // overwrite the saved personality on every person. `fromSnapshot`
+      // rebuilds the same Person shape using only the saved values, so
+      // the kernel RNG state is untouched and personalities survive the
+      // round-trip.
+      const savedEntitiesById = new Map();
+      if (saveData.kernel && Array.isArray(saveData.kernel.entities)) {
+        for (const [id, ent] of saveData.kernel.entities) savedEntitiesById.set(id, ent);
+      }
+      for (const [id, entity] of Array.from(this.kernel.entities.entries())) {
+        if (!entity) continue;
+        const looksLikePerson = entity.isPerson === true ||
+          (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean' && entity.type === 'person');
+        if (!looksLikePerson) continue;
+        if (entity instanceof Person) continue;
+        const saved = savedEntitiesById.get(id) || entity;
+        if (!saved) continue;
+        // Merge any extra top-level fields the JSON might have into a
+        // single snapshot for `Person.fromSnapshot`.
+        const snap = { ...saved, id: saved.id ?? id };
+        const rehydrated = Person.fromSnapshot(snap, this.kernel);
+        this.kernel.entities.set(id, rehydrated);
+      }
+
+      // Same story for Household entities: kernel.load() drops them as plain
+      // objects, which breaks `playerHousehold.consumeFood` and similar.
+      for (const [id, entity] of Array.from(this.kernel.entities.entries())) {
+        if (!entity) continue;
+        if (entity.type !== 'household') continue;
+        if (typeof entity.consumeFood === 'function') continue;
+        const saved = savedEntitiesById.get(id) || entity;
+        const rehydrated = new Household(id, saved.location || { x: 0, y: 0, z: 0, settlementId: 0 });
+        rehydrated.type = 'household';
+        rehydrated.isPerson = false;
+        rehydrated.mass = 0;
+        if (Array.isArray(saved.members)) rehydrated.members = saved.members;
+        rehydrated.head = saved.head ?? null;
+        rehydrated.wealth = saved.wealth ?? 0;
+        rehydrated.food = saved.food ?? 100;
+        if (saved.resources instanceof Map || Array.isArray(saved.resources)) {
+          rehydrated.resources = new Map(saved.resources);
+        }
+        if (Array.isArray(saved.property)) rehydrated.property = saved.property;
+        if (Array.isArray(saved.debts)) rehydrated.debts = saved.debts;
+        this.kernel.entities.set(id, rehydrated);
+      }
 
       const worldGen = new WorldGenerator(saveData.world.seed);
       this.world = worldGen.generate();
