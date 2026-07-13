@@ -16,6 +16,7 @@ import {
   formatGameTime,
 } from './theme.js';
 import { GameQuery } from '../core/GameQuery.js';
+import { Game } from '../Game.js';
 
 const FOCUSABLE_PANELS = [
   'map', 'location', 'status', 'sparklines', 'factions',
@@ -2134,15 +2135,11 @@ updateDisplay() {
         this.log('No saves directory found.', 'error');
         return;
       }
-      const files = fs.readdirSync(saveDir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => ({ f, t: fs.statSync(path.join(saveDir, f)).mtimeMs }))
-        .sort((a, b) => b.t - a.t);
-      if (files.length === 0) {
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) {
         this.log('No save files found.', 'error');
         return;
       }
-      const latest = files[0].f;
       const filepath = path.join(saveDir, latest);
       const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       const result = this.game.load(data);

@@ -8,6 +8,8 @@ import { Household } from './systems/Social.js';
 import { NPCCoordinator } from './character/NPCCoordinator.js';
 import { AAAConfig, AAA_PRESETS } from './character/aaa-npc/config.js';
 import { createMigrationEngine } from './character/aaa-npc/migration.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const REGIONAL_DEFAULT_INTERVAL = 60; // minutes per regional tick (1 hour)
 const IDLE_NPC_NEXT_TURN_SKIP = 1440; // idle NPCs skipped for a full game-day
@@ -1648,5 +1650,36 @@ const templates = [
       activeTier: this.kernel.activeTier.size,
       regionalTier: this.kernel.regionalTier.size
     };
+  }
+
+  // Returns the filename (not the full path) of the newest `*.json` save in
+  // `saveDir`, picked by mtime. Returns `null` if the directory is missing,
+  // unreadable, or contains no `.json` saves. The four UIs use this to avoid
+  // the lexicographic-name bias of `fs.readdirSync().sort().reverse()[0]`,
+  // which would pick a freshly-created earlier-named save over an older
+  // later-named one.
+  static latestSaveFile(saveDir) {
+    let names;
+    try {
+      names = fs.readdirSync(saveDir);
+    } catch (_) {
+      return null;
+    }
+    let best = null;
+    let bestMtime = -Infinity;
+    for (const name of names) {
+      if (!name.endsWith('.json')) continue;
+      let mtime;
+      try {
+        mtime = fs.statSync(path.join(saveDir, name)).mtimeMs;
+      } catch (_) {
+        continue;
+      }
+      if (mtime > bestMtime) {
+        bestMtime = mtime;
+        best = name;
+      }
+    }
+    return best;
   }
 }

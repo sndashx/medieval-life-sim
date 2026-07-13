@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { Game } from '../src/Game.js';
 import { makeGameWithPlayer } from './_helpers.js';
 
 test('save-load: roundtrip preserves kernel turn and player state', () => {
@@ -62,13 +63,22 @@ test('save-load: mtime-based "latest" picks newest, not lex-last', (t) => {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   });
 
-  // Replicate the shared loader snippet used by all four UIs:
-  const files = fs.readdirSync(dir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
-    .sort((a, b) => b.t - a.t);
-  const latest = files[0]?.f;
+  const latest = Game.latestSaveFile(dir);
 
   assert.equal(latest, 'save_alice_2025-12-30.json',
-    'loader must pick the newer-mtime file even when its name sorts before the older one');
+    'latestSaveFile must pick the newer-mtime file even when its name sorts before the older one');
+});
+
+test('save-load: latestSaveFile returns null on empty/missing directory', (t) => {
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-empty-'));
+  t.after(() => {
+    try { fs.rmSync(emptyDir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  assert.equal(Game.latestSaveFile(emptyDir), null, 'empty dir → null');
+  assert.equal(
+    Game.latestSaveFile(path.join(emptyDir, 'does-not-exist')),
+    null,
+    'missing dir → null'
+  );
 });

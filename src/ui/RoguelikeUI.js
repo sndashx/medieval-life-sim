@@ -2,6 +2,7 @@ import blessed from 'blessed';
 import contrib from 'blessed-contrib';
 import fs from 'fs';
 import path from 'path';
+import { Game } from '../Game.js';
 
 export class RoguelikeUI {
   constructor(game) {
@@ -768,12 +769,8 @@ export class RoguelikeUI {
     try {
       const saveDir = path.join(process.cwd(), 'saves');
       if (!fs.existsSync(saveDir)) { this.log('No saves directory found.', 'error'); return; }
-      const files = fs.readdirSync(saveDir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => ({ f, t: fs.statSync(path.join(saveDir, f)).mtimeMs }))
-        .sort((a, b) => b.t - a.t);
-      if (files.length === 0) { this.log('No save files found.', 'error'); return; }
-      const latest = files[0].f;
+      const latest = Game.latestSaveFile(saveDir);
+      if (!latest) { this.log('No save files found.', 'error'); return; }
       const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
       const result = this.game.load(data);
       if (result.success) {
