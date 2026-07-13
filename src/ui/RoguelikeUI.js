@@ -3,6 +3,7 @@ import contrib from 'blessed-contrib';
 import fs from 'fs';
 import path from 'path';
 import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
 
 export class RoguelikeUI {
   constructor(game) {
@@ -148,7 +149,7 @@ export class RoguelikeUI {
   }
 
   setupKeybindings() {
-    this.screen.key(['escape', 'C-c'], () => process.exit(0));
+    this.screen.key(['escape', 'C-c'], () => this._confirmQuit());
     this.screen.key([':', 'enter'], () => this.commandInput.focus());
     this.screen.key(['tab'], () => this.cyclePanels());
     this.screen.key(['m'], () => { this.mapBox.focus(); this.selectedPanel = 'map'; this.screen.render(); });
@@ -162,6 +163,13 @@ export class RoguelikeUI {
     
     this.commandInput.on('submit', (value) => {
       if (value) {
+        if (this._quitConfirmPending) {
+          this._resolveQuitConfirm(value.trim());
+          this.commandInput.clearValue();
+          this.commandInput.focus();
+          this.screen.render();
+          return;
+        }
         this.handleCommand(value);
         this.commandInput.clearValue();
       }
@@ -454,7 +462,7 @@ export class RoguelikeUI {
       'eat': () => this.eat(args), 'e': () => this.eat(args),
       'sleep': () => this.sleep(), 's': () => this.sleep(),
       'work': () => this.work(), 'w': () => this.work(),
-      'quit': () => process.exit(0), 'exit': () => process.exit(0),
+      'quit': () => this._confirmQuit(), 'exit': () => this._confirmQuit(),
       'continue': () => this.continueAsHeir(args),
       'heirs': () => this.listHeirs(),
       'save': () => this.save(),
@@ -763,6 +771,23 @@ export class RoguelikeUI {
     } catch (error) {
       this.log(`Failed to save: ${error.message}`, 'error');
     }
+  }
+
+  _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    this.log('Save before quitting? [y/N/cancel] (type your answer and press Enter)', 'system');
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' y/N/cancel '); } catch (_) {}
+    if (this.commandInput && typeof this.commandInput.focus === 'function') {
+      try { this.commandInput.focus(); this.screen.render(); } catch (_) {}
+    }
+  }
+
+  async _resolveQuitConfirm(input) {
+    const answer = await performQuit(this, (_q, cb) => cb(input));
+    this._quitConfirmPending = false;
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' Command [?: help] '); } catch (_) {}
+    return answer;
   }
 
   load() {
