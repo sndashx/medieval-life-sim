@@ -1247,8 +1247,8 @@ export class EnhancedGameUI {
     for (const shop of shops) {
       const result = this.game.trading.browseShop(shop.id);
       if (result.success) {
-        const item = result.items.find(i => 
-          i.subtype.toLowerCase().includes(itemName.toLowerCase())
+        const item = result.items.find(i =>
+          (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false)
         );
         if (item) {
           foundShop = shop;
@@ -1372,8 +1372,8 @@ export class EnhancedGameUI {
     for (const shop of shops) {
       const result = this.game.trading.browseShop(shop.id);
       if (result.success) {
-        const item = result.items.find(i => 
-          i.subtype.toLowerCase().includes(itemName.toLowerCase())
+        const item = result.items.find(i =>
+          (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false)
         );
         if (item) {
           foundShop = shop;
@@ -1423,9 +1423,9 @@ export class EnhancedGameUI {
     const resources = this.game.naturalWorld.resources.get(tileKey) || [];
     
     // Find matching resource
-    const resource = resources.find(r => 
+    const resource = resources.find(r =>
       r.type.toLowerCase().includes(resourceType) ||
-      r.subtype.toLowerCase().includes(resourceType)
+      (r.subtype ? r.subtype.toLowerCase().includes(resourceType) : false)
     );
     
     if (!resource) {
@@ -1502,9 +1502,9 @@ export class EnhancedGameUI {
       if (!plant) return;
     } else {
       const plantName = args.join(' ').toLowerCase();
-      plant = harvestable.find(p => 
+      plant = harvestable.find(p =>
         p.type.toLowerCase().includes(plantName) ||
-        p.subtype.toLowerCase().includes(plantName)
+        (p.subtype ? p.subtype.toLowerCase().includes(plantName) : false)
       );
       
       if (!plant) {
