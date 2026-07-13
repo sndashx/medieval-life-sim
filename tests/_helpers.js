@@ -27,19 +27,31 @@ export function makeGameWithPlayer(seed = 12345, worldConfig = SMALL_WORLD, name
 const mathRandomSites = [];
 export function getMathRandomSites() { return mathRandomSites; }
 
-// Returns a Proxy that records every Math.random() call (file + line) instead
-// of returning the actual value. Tests install this temporarily.
+// Reference-counted Math.random spy. Records every call site instead of
+// returning the actual value. Reference-counted so nested install/restore
+// cycles in parallel tests don't leave Math.random pointing at a spy no
+// test owns.
+let spyDepth = 0;
+let originalRandom = null;
 export function installMathRandomSpy() {
-  const original = Math.random;
-  let counter = 0;
+  if (spyDepth === 0) originalRandom = Math.random;
+  spyDepth++;
+  let counter = mathRandomSites.length;
   Math.random = function () {
     const stack = new Error().stack;
     const line = (stack || '').split('\n').slice(2, 4).join(' | ');
     mathRandomSites.push({ call: ++counter, site: line });
-    return original.call(Math);
+    return 0.5;
   };
-  return () => { Math.random = original; };
 }
+export function restoreMathRandom() {
+  spyDepth = Math.max(0, spyDepth - 1);
+  if (spyDepth === 0 && originalRandom) {
+    Math.random = originalRandom;
+    originalRandom = null;
+  }
+}
+export function getSpyDepth() { return spyDepth; }
 
 // Build an EnhancedGameUI without a real TTY. Stubs rl so command handlers
 // that take args=[] (and would normally await showSelectionMenu / rl.question)
