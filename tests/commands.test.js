@@ -120,5 +120,6 @@ test('Combat.resolveAttack returns {hit, damage, ...} on direct call', async () 
   assert.ok('damage' in result, 'result has damage property');
   assert.ok(typeof result.hit === 'boolean', 'hit is boolean');
   assert.ok(typeof result.damage === 'number', 'damage is number');
-  assert.ok(!player || result !== player, 'attack does not return the player object');
+  assert.ok(result !== player, 'attack does not return the player object');
+  assert.ok(!('skills' in result) && !('physiology' in result), 'result is not a person-shaped object');
 });
