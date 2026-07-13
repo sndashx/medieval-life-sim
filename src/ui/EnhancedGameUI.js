@@ -2063,7 +2063,9 @@ export class EnhancedGameUI {
       const filepath = path.join(saveDir, filename);
       
       fs.writeFileSync(filepath, JSON.stringify(saveData, null, 2));
-      
+
+      try { Game.pruneOldSaves(saveDir, 5); } catch (_) {}
+
       this.log(`Game saved to: ${filename}`, 'success');
       if (this.devMode) {
         this.log(`[DEV] Save size: ${JSON.stringify(saveData).length} bytes`, 'system');
@@ -2119,9 +2121,35 @@ export class EnhancedGameUI {
         
         const filename = files[choice - 1];
         const filepath = path.join(saveDir, filename);
-        
+
         try {
-          const saveData = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+          // T7-Hygiene: refuse to load files above a sane size cap (a hostile
+          // or corrupt 4 GB JSON would OOM the UI thread).
+          const fileStats = fs.statSync(filepath);
+          if (fileStats.size > 50 * 1024 * 1024) {
+            this.log(`Refusing to load ${filename}: size ${(fileStats.size / (1024 * 1024)).toFixed(1)} MB exceeds 50 MB cap.`, 'error');
+            if (this.game.player) this.showGameScreen(); else this.showWelcome();
+            this.rl.prompt();
+            return;
+          }
+          const rawData = fs.readFileSync(filepath, 'utf8');
+          let saveData;
+          try {
+            saveData = JSON.parse(rawData);
+          } catch (parseErr) {
+            this.log(`Load failed: invalid JSON in ${filename} (${parseErr.message})`, 'error');
+            if (this.game.player) this.showGameScreen(); else this.showWelcome();
+            this.rl.prompt();
+            return;
+          }
+          // T7-Hygiene: refuse future-schema saves so a newer version's
+          // unverifiable data doesn't clobber a downgraded client.
+          if (typeof saveData?.schemaVersion === 'number' && saveData.schemaVersion > Game.SAVE_SCHEMA_VERSION) {
+            this.log(`Refusing to load ${filename}: schemaVersion=${saveData.schemaVersion} is newer than supported (${Game.SAVE_SCHEMA_VERSION}).`, 'error');
+            if (this.game.player) this.showGameScreen(); else this.showWelcome();
+            this.rl.prompt();
+            return;
+          }
           const result = this.game.load(saveData);
           
           if (result.success) {
