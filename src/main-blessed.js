@@ -10,7 +10,9 @@ function parseArgs() {
   const config = {
     seed: undefined,
     worldConfig: {},
-    gameOptions: {}
+    gameOptions: {
+      aaaPreset: 'narrative' // Default to narrative preset for best experience
+    }
   };
   
   for (let i = 0; i < args.length; i++) {

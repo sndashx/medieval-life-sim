@@ -8,6 +8,9 @@ import { Household } from './systems/Social.js';
 import { NPCCoordinator } from './character/NPCCoordinator.js';
 import { AAAConfig, AAA_PRESETS } from './character/aaa-npc/config.js';
 import { createMigrationEngine } from './character/aaa-npc/migration.js';
+import { OpeningHook } from './narrative/OpeningHook.js';
+import { NarrativeChronicle } from './narrative/NarrativeChronicle.js';
+import { GossipSystem } from './social/GossipSystem.js';
 
 const REGIONAL_DEFAULT_INTERVAL = 60; // minutes per regional tick (1 hour)
 const IDLE_NPC_NEXT_TURN_SKIP = 1440; // idle NPCs skipped for a full game-day
@@ -73,6 +76,13 @@ export class Game {
 
     console.log('  → Setting up event handlers...');
     this.npcCoordinator = new NPCCoordinator(this);
+    
+    // Initialize narrative chronicle for story-like event logging
+    this.chronicle = new NarrativeChronicle(this);
+    
+    // Initialize gossip system for social dynamics
+    this.gossip = new GossipSystem(this);
+    
     this.setupEventHandlers();
   }
 
@@ -108,6 +118,13 @@ export class Game {
 
     console.log('\n🐴 Populating vehicles...');
     if (this.transportation) this.transportation.populateForSettlements(this.world.settlements);
+
+    // Create opening hook scenario if AAA is enabled
+    if (this.aaaConfig && this.player) {
+      console.log('\n📖 Preparing opening scenario...');
+      this.openingHook = new OpeningHook(this);
+      this.openingScenario = this.openingHook.createOpeningScenario();
+    }
 
     console.log('\n✓ World ready!');
     return { success: true };

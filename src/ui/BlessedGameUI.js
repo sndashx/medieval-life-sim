@@ -1282,7 +1282,15 @@ updateDisplay() {
     this._closeCharacterCreation();
     if (result && result.success) {
       this.log(`You are born as ${name}, a ${sex} child in ${result.settlement ? result.settlement.name : 'the realm'}.`, 'success');
-      this.log('Your life begins. Type `look` to see where you are.', 'system');
+      
+      // Show opening hook if AAA is enabled
+      if (this.game.openingScenario && this.game.openingHook) {
+        const narrative = this.game.openingHook.getOpeningNarrative(this.game.openingScenario);
+        this.log(narrative, 'system');
+      } else {
+        this.log('Your life begins. Type `look` to see where you are.', 'system');
+      }
+      
       this.updateDisplay();
     } else {
       this.log(`Failed to create character: ${result ? result.error : 'unknown error'}`, 'error');
@@ -1470,6 +1478,11 @@ updateDisplay() {
     const turn = this.game && this.game.kernel ? this.game.kernel.turn : 0;
     const t = formatGameTime(turn);
     const ts = `{${Color.mute}-fg}${t.hh}:${t.mm}{/${Color.mute}-fg}`;
+
+    // Add to narrative chronicle if available
+    if (this.game && this.game.chronicle) {
+      this.game.chronicle.addEntry(message, { type, turn });
+    }
 
     if (this.messageLog && typeof this.messageLog.log === 'function') {
       this.messageLog.log(`${ts} {${color}-fg}${icon} ${message}{/${color}-fg}`);
