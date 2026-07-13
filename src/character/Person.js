@@ -610,6 +610,7 @@ export class Person {
    */
   toJSON() {
     const data = {
+      isPerson: true,
       _cachedHealth: this._cachedHealth || null,
       _cachedHealthTurn: this._cachedHealthTurn,
       nextInterestingTurn: this.nextInterestingTurn,

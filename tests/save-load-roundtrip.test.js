@@ -51,20 +51,28 @@ test('integration: save and load is byte-equivalent at the save point', () => {
   assert.equal(fpLoaded.conservationPop, fpSaved.conservationPop, 'conservation.population mismatch');
 });
 
-test('integration: load rebinds _kernel on every Person entity', () => {
+test('integration: load rebinds _kernel on every Person entity (JSON-roundtripped save)', () => {
   const a = makeGameWithPlayer(42);
   a.advanceTurns(200);
   const saveData = a.save();
+  // JSON-roundtrip: this is the path every UI takes (fs.writeFileSync(JSON.stringify(saveData))).
+  // Person.toJSON drops class methods and _kernel, so a real on-disk save lands in
+  // Game.load as plain objects. The rebind loop must still wire _kernel to the new kernel.
+  const roundtripped = JSON.parse(JSON.stringify(saveData));
+  assert.equal(typeof roundtripped, 'object', 'JSON roundtrip succeeds');
 
   const b = makeGameWithPlayer(42);
-  b.load(saveData);
+  b.load(roundtripped);
   b.advanceTurns(50);
 
   assert.equal(b.player._kernel, b.kernel, 'player._kernel should be the loaded kernel');
   let checked = 0;
   for (const entity of b.kernel.entities.values()) {
-    if (!entity || !entity.isPerson) continue;
-    assert.equal(entity._kernel, b.kernel, `Person ${entity.id} _kernel not rebound`);
+    if (!entity) continue;
+    const looksLikePerson = entity.isPerson === true ||
+      (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean');
+    if (!looksLikePerson) continue;
+    assert.equal(entity._kernel, b.kernel, `Person ${entity.id} _kernel not rebound after JSON load`);
     checked++;
   }
   assert.ok(checked > 0, 'expected at least one Person in the loaded world');

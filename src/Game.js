@@ -1381,7 +1381,14 @@ const templates = [
       this.kernel.load(saveData.kernel);
 
       for (const entity of this.kernel.entities.values()) {
-        if (entity && entity.isPerson && entity._kernel !== this.kernel) {
+        if (!entity) continue;
+        // Live Person instances: entity.isPerson set in constructor.
+        // JSON-roundtripped Person snapshots (Person.toJSON output): carry
+        // `isPerson: true` but are plain objects without `_kernel`.
+        const isPersonShape =
+          entity.isPerson === true ||
+          (typeof entity.nextInterestingTurn === 'number' && typeof entity._goalsStale === 'boolean');
+        if (isPersonShape && entity._kernel !== this.kernel) {
           entity._kernel = this.kernel;
         }
       }
