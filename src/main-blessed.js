@@ -90,6 +90,17 @@ For more information, see LAUNCH.md
 // Parse arguments
 const config = parseArgs();
 
+// Ensure worldConfig has defaults
+const worldConfig = {
+  worldSize: { width: 100, height: 100 },
+  settlements: 5,
+  resources: 50,
+  rivers: 5,
+  populationMin: 50,
+  populationMax: 500,
+  ...config.worldConfig
+};
+
 // Log configuration
 console.log('🎮 Medieval Life Sim');
 console.log('═══════════════════════════════════════════════════════════\n');
@@ -97,18 +108,14 @@ if (config.seed) console.log(`Seed: ${config.seed}`);
 if (config.gameOptions.aaaPreset) {
   console.log(`AAA Preset: ${config.gameOptions.aaaPreset}`);
 }
-if (config.worldConfig.populationMax) {
-  console.log(`Population: ${config.worldConfig.populationMin}-${config.worldConfig.populationMax}`);
-}
-if (config.worldConfig.worldSize) {
-  console.log(`World Size: ${config.worldConfig.worldSize.width}x${config.worldConfig.worldSize.height}`);
-}
+console.log(`Population: ${worldConfig.populationMin}-${worldConfig.populationMax}`);
+console.log(`World Size: ${worldConfig.worldSize.width}x${worldConfig.worldSize.height}`);
 console.log('');
 
 // Create game instance
 const game = new Game(
   config.seed,
-  Object.keys(config.worldConfig).length > 0 ? config.worldConfig : null,
+  worldConfig,
   config.gameOptions
 );
 

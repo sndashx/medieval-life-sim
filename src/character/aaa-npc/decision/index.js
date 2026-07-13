@@ -6,8 +6,11 @@
  * @module decision
  */
 
-export { UtilityAI, Action, Consideration, ConsiderationFactory } from './UtilityAI.js';
-export { GOAPPlanner, GOAPAction, GOAPActionFactory, Goal, GoalManager } from './GOAPPlanner.js';
+import { UtilityAI, Action, Consideration, ConsiderationFactory } from './UtilityAI.js';
+import { GOAPPlanner, GOAPAction, GOAPActionFactory, Goal, GoalManager } from './GOAPPlanner.js';
+
+// Re-export for external use
+export { UtilityAI, Action, Consideration, ConsiderationFactory, GOAPPlanner, GOAPAction, GOAPActionFactory, Goal, GoalManager };
 
 /**
  * Hybrid Decision System
