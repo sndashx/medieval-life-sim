@@ -82,3 +82,139 @@ test('save-load: latestSaveFile returns null on empty/missing directory', (t) =>
     'missing dir → null'
   );
 });
+
+test('save-load: pruneOldSaves keeps only the newest N saves (by mtime)', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-prune-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  // Create 8 saves with strictly increasing mtimes (oldest first).
+  const names = [];
+  for (let i = 0; i < 8; i++) {
+    const name = `save_prune_${String(i).padStart(2, '0')}.json`;
+    fs.writeFileSync(path.join(dir, name), '{}');
+    const stamp = new Date(Date.UTC(2025, 0, 1, 0, 0, i));
+    fs.utimesSync(path.join(dir, name), stamp, stamp);
+    names.push(name);
+  }
+
+  Game.pruneOldSaves(dir, 5);
+
+  const remaining = fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort();
+  assert.equal(remaining.length, 5, 'exactly 5 saves remain');
+  // The 3 oldest (i=0..2) must be gone; the 5 newest (i=3..7) must survive.
+  assert.deepEqual(
+    remaining,
+    names.slice(3),
+    'the 3 oldest saves are pruned; the 5 newest are kept'
+  );
+});
+
+test('save-load: pruneOldSaves tolerates missing directory and non-json files', (t) => {
+  // Should not throw even when the dir doesn't exist or contains non-json noise.
+  const missing = path.join(os.tmpdir(), 'save-load-prune-missing-' + Date.now());
+  assert.doesNotThrow(() => Game.pruneOldSaves(missing), 'missing dir → no throw');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-prune-noise-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+  fs.writeFileSync(path.join(dir, 'garbage.txt'), 'ignore me');
+  fs.writeFileSync(path.join(dir, 'save_keep.json'), '{}');
+  assert.doesNotThrow(() => Game.pruneOldSaves(dir, 5), 'non-json files ignored');
+  assert.deepEqual(
+    fs.readdirSync(dir).sort(),
+    ['garbage.txt', 'save_keep.json'].sort(),
+    'non-json file survives; json save kept'
+  );
+});
+
+test('save-load: readSaveFile rejects oversized files with reason too-large', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-big-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  // Write a sparse file that claims to be 60 MB but is virtually empty on disk.
+  // fs.statSync reports the apparent size, which is what we want to test.
+  const big = path.join(dir, 'save_big.json');
+  const fd = fs.openSync(big, 'w');
+  try {
+    fs.ftruncateSync(fd, 60 * 1024 * 1024);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const result = Game.readSaveFile(big);
+  assert.equal(result.ok, false, 'oversized save is rejected');
+  assert.equal(result.reason, 'too-large', 'reason is too-large');
+  assert.match(result.error, /exceeds.*MB cap/, 'error message mentions cap');
+});
+
+test('save-load: readSaveFile rejects future-schema saves with reason future-schema', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-schema-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  const future = path.join(dir, 'save_future.json');
+  fs.writeFileSync(future, JSON.stringify({
+    schemaVersion: 999,
+    seed: 1, kernel: { turn: 0 }, world: {}
+  }));
+
+  const result = Game.readSaveFile(future);
+  assert.equal(result.ok, false, 'future-schema save is rejected');
+  assert.equal(result.reason, 'future-schema', 'reason is future-schema');
+  assert.match(result.error, /schemaVersion=999.*newer than supported/, 'error names the version');
+});
+
+test('save-load: readSaveFile accepts a well-formed save', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-ok-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  const ok = path.join(dir, 'save_ok.json');
+  const payload = JSON.stringify({ schemaVersion: 3, seed: 42, kernel: { turn: 7 } });
+  fs.writeFileSync(ok, payload);
+
+  const result = Game.readSaveFile(ok);
+  assert.equal(result.ok, true, 'valid save is accepted');
+  assert.equal(result.data.seed, 42, 'data roundtrips');
+  assert.equal(result.data.kernel.turn, 7, 'kernel.turn roundtrips');
+});
+
+test('save-load: readSaveFile rejects malformed JSON with reason parse', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-bad-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  const bad = path.join(dir, 'save_bad.json');
+  fs.writeFileSync(bad, '{ this is :: not json }');
+
+  const result = Game.readSaveFile(bad);
+  assert.equal(result.ok, false, 'malformed JSON is rejected');
+  assert.equal(result.reason, 'parse', 'reason is parse');
+});
+
+test('save-load: readSaveFile reports missing file with reason missing', () => {
+  const result = Game.readSaveFile(path.join(os.tmpdir(), 'nope-' + Date.now() + '.json'));
+  assert.equal(result.ok, false, 'missing file is rejected');
+  assert.equal(result.reason, 'missing', 'reason is missing');
+});
+
+test('save-load: readSaveFile accepts save with no schemaVersion (legacy/best-effort)', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-legacy-'));
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  const legacy = path.join(dir, 'save_legacy.json');
+  fs.writeFileSync(legacy, JSON.stringify({ seed: 1, kernel: { turn: 0 } }));
+
+  const result = Game.readSaveFile(legacy);
+  assert.equal(result.ok, true, 'save without schemaVersion is accepted (legacy best-effort load)');
+});

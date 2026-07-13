@@ -450,6 +450,7 @@ export class GameUI {
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `save_${this.game.player?.name || 'unknown'}_${ts}.json`;
       fs.writeFileSync(path.join(saveDir, filename), JSON.stringify(saveData, null, 2));
+      try { Game.pruneOldSaves(saveDir, 5); } catch (_) {}
       console.log(`Saved: ${filename}`);
     } catch (e) { console.log(`Save failed: ${e.message}`); }
   }
@@ -460,7 +461,25 @@ export class GameUI {
       if (!fs.existsSync(saveDir)) { console.log('No saves directory.'); return; }
       const latest = Game.latestSaveFile(saveDir);
       if (!latest) { console.log('No save files.'); return; }
-      const data = JSON.parse(fs.readFileSync(path.join(saveDir, latest), 'utf8'));
+      const filepath = path.join(saveDir, latest);
+      // T7-Hygiene: refuse oversized or future-schema saves.
+      const latestStats = fs.statSync(filepath);
+      if (latestStats.size > 50 * 1024 * 1024) {
+        console.log(`Refusing to load ${latest}: size ${(latestStats.size / (1024 * 1024)).toFixed(1)} MB exceeds 50 MB cap.`);
+        return;
+      }
+      const rawData = fs.readFileSync(filepath, 'utf8');
+      let data;
+      try {
+        data = JSON.parse(rawData);
+      } catch (parseErr) {
+        console.log(`Load failed: invalid JSON in ${latest} (${parseErr.message})`);
+        return;
+      }
+      if (typeof data?.schemaVersion === 'number' && data.schemaVersion > Game.SAVE_SCHEMA_VERSION) {
+        console.log(`Refusing to load ${latest}: schemaVersion=${data.schemaVersion} is newer than supported (${Game.SAVE_SCHEMA_VERSION}).`);
+        return;
+      }
       const result = this.game.load(data);
       if (result.success) console.log(`Loaded: ${latest}`);
       else console.log(`Load failed: ${result.error}`);
