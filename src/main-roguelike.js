@@ -5,7 +5,7 @@ import { RoguelikeUI } from './ui/RoguelikeUI.js';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const seed = args[0] ? parseInt(args[0]) : undefined;
+const seed = args[0] !== undefined ? parseInt(args[0], 10) : undefined;
 
 // Create game instance
 const game = new Game(seed);

@@ -17,7 +17,7 @@ function parseArgs() {
     const arg = args[i];
     
     if (arg === '--seed' && args[i + 1]) {
-      config.seed = parseInt(args[++i]);
+      config.seed = parseInt(args[++i], 10);
     } else if (arg === '--aaa-preset' && args[i + 1]) {
       config.gameOptions.aaaPreset = args[++i];
     } else if (arg === '--aaa-config' && args[i + 1]) {
@@ -48,7 +48,7 @@ function parseArgs() {
       process.exit(0);
     } else if (!arg.startsWith('--') && config.seed === undefined) {
       // Legacy: first positional arg is seed
-      config.seed = parseInt(arg);
+      config.seed = parseInt(arg, 10);
     }
   }
   

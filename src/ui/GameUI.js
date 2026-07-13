@@ -128,7 +128,7 @@ export class GameUI {
   look() {
     const player = this.game.getPlayer();
     if (!player) { console.log('No active character. Use "start" to begin.'); return; }
-    const tile = this.game.world.getTile(player.position.x, player.position.y);
+    const tile = this.game.world.getTile(player.position.x, player.position.y) ?? { biome: { type: 'unknown' }, terrain: { elevation: 0 }, climate: { temperature: 0 } };
     const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, player.position.z, 10);
     console.log(`\n=== ${tile.biome.type.toUpperCase()} ===`);
     console.log(`Elevation: ${Math.floor(tile.terrain.elevation)}m | Temp: ${Math.floor(tile.climate.temperature)}°C`);

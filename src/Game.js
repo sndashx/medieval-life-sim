@@ -35,7 +35,7 @@ export class Game {
     }
     
     console.log('  → Initializing simulation kernel...');
-    this.seed = seed || Date.now(); // AUDIT-WHITELIST: cli seed fallback
+    this.seed = seed == null ? Date.now() : seed; // AUDIT-WHITELIST: cli seed fallback
     this.worldConfig = worldConfig || {
       worldSize: { width: 100, height: 100 },
       settlements: 5,
