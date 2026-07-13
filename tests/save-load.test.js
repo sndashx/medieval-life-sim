@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import { makeGameWithPlayer } from './_helpers.js';
 
 test('save-load: roundtrip preserves kernel turn and player state', () => {
@@ -41,4 +44,31 @@ test('save-load: includes all major system payloads', () => {
                      'warfare', 'politics', 'pathogens', 'magic', 'transportation']) {
     assert.ok(data[key] !== undefined, `saveData.${key} present`);
   }
+});
+
+test('save-load: mtime-based "latest" picks newest, not lex-last', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'save-load-mtime-'));
+  const older = path.join(dir, 'save_zoe_2025-01-01.json');
+  const newer = path.join(dir, 'save_alice_2025-12-30.json');
+  fs.writeFileSync(older, '{}');
+  fs.writeFileSync(newer, '{}');
+
+  const olderTime = new Date('2025-01-01T00:00:00Z');
+  const newerTime = new Date('2025-12-30T00:00:00Z');
+  fs.utimesSync(older, olderTime, olderTime);
+  fs.utimesSync(newer, newerTime, newerTime);
+
+  t.after(() => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  });
+
+  // Replicate the shared loader snippet used by all four UIs:
+  const files = fs.readdirSync(dir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.t - a.t);
+  const latest = files[0]?.f;
+
+  assert.equal(latest, 'save_alice_2025-12-30.json',
+    'loader must pick the newer-mtime file even when its name sorts before the older one');
 });

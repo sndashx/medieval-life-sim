@@ -2134,12 +2134,15 @@ updateDisplay() {
         this.log('No saves directory found.', 'error');
         return;
       }
-      const files = fs.readdirSync(saveDir).filter(f => f.endsWith('.json'));
+      const files = fs.readdirSync(saveDir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => ({ f, t: fs.statSync(path.join(saveDir, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t);
       if (files.length === 0) {
         this.log('No save files found.', 'error');
         return;
       }
-      const latest = files.sort().reverse()[0];
+      const latest = files[0].f;
       const filepath = path.join(saveDir, latest);
       const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       const result = this.game.load(data);

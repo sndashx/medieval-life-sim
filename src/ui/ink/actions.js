@@ -292,10 +292,14 @@ export class Actions {
       const path = await import('path');
       const dir = './saves';
       if (!fs.existsSync(dir)) { this._emit('No saves found.', 'error'); return; }
-      const files = fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort().reverse();
+      const files = fs.readdirSync(dir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t);
       if (files.length === 0) { this._emit('No saves found.', 'error'); return; }
-      this._emit(`${G.book}  Latest save: ${files[0]}  (auto-loaded)`, 'info');
-      const data = JSON.parse(fs.readFileSync(path.join(dir, files[0]), 'utf8'));
+      const latest = files[0].f;
+      this._emit(`${G.book}  Latest save: ${latest}  (auto-loaded)`, 'info');
+      const data = JSON.parse(fs.readFileSync(path.join(dir, latest), 'utf8'));
       this.game.load(data);
       this._emit(`${G.fleur}  Loaded.`, 'success');
     } catch (e) {
