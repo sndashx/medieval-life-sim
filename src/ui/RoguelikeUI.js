@@ -832,14 +832,20 @@ export class RoguelikeUI {
   attack(args) {
     const player = this.game.getPlayer();
     if (!player || args.length === 0) return;
-    const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, 0, 5);
+    const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, player.position.z || 0, 5);
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(p => p && p.name && p !== player && p.name.toLowerCase().includes(args[0].toLowerCase()));
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     if (target.alive === false) return this.log(`${target.name} is already dead.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
     const r = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
-    this.log(r.hit ? `Hit ${target.name} for ${(r.damage*100).toFixed(0)}%.` : `Missed.`, 'combat');
+    if (r.hit) {
+      this.log(`Hit ${target.name} for ${(r.damage*100).toFixed(0)}%.`, 'combat');
+      if (target.physiology?.checkVitals && !target.physiology.checkVitals().alive && target.alive) {
+        target.die('combat', this.game.kernel);
+        this.log(`${target.name} has died!`, 'combat');
+      }
+    } else this.log(`Missed ${target.name}.`, 'combat');
   }
   craft(args) {
     const player = this.game.getPlayer();

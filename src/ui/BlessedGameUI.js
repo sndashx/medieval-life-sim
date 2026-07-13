@@ -2557,7 +2557,7 @@ updateDisplay() {
   attack(args) {
     const player = this.game.getPlayer();
     if (!player || args.length === 0) return this.log('Usage: attack <person>', 'error');
-    const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, 0, 5);
+    const nearby = this.game.kernel.queryEntitiesNear(player.position.x, player.position.y, player.position.z || 0, 5);
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(p => p && p.name && p !== player && p.name.toLowerCase().includes(args[0].toLowerCase()));
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
