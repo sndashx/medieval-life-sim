@@ -933,7 +933,7 @@ export class RoguelikeUI {
       item = browse.items[idx - 1];
     } else {
       const q = args.join(' ').toLowerCase();
-      item = browse.items.find(i => i.subtype.toLowerCase().includes(q));
+      item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(q) : false));
     }
     if (!item) return this.log('No matching item here.', 'error');
     const qty = parseInt(args[args.length - 1], 10);
@@ -979,7 +979,7 @@ export class RoguelikeUI {
     if (!shop) return;
     const browse = this.game.trading.browseShop(shop.id);
     if (!browse.success) return this.log(browse.reason, 'error');
-    const item = browse.items.find(i => i.subtype.toLowerCase().includes(itemName.toLowerCase()));
+    const item = browse.items.find(i => (i.subtype ? i.subtype.toLowerCase().includes(itemName.toLowerCase()) : false));
     if (!item) return this.log('Item not stocked here.', 'error');
     const r = this.game.trading.haggle(player, shop.id, item.type, item.subtype, targetPrice);
     this.log(r.success ? r.message : `Refused: ${r.reason}`, r.success ? 'success' : 'error');
