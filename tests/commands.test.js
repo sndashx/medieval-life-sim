@@ -6,10 +6,6 @@ import { makeGameWithPlayer, makeHeadlessUI, exerciseCommands } from './_helpers
 // Each is exercised with no args; the test verifies no handler throws an
 // unhandled exception. Handlers may return "Failed: ..." strings via ui.log
 // (which we stub) — that's allowed, only true exceptions fail the test.
-//
-// KNOWN-BROKEN PRE-EXISTING UI BUGS (skipped here, fix in src/ separately):
-//   - 'attack' / 'fight' calls `this.game.combat.resolveAttack(...)` but
-//     Combat.resolveAttack is static — would throw `not a function`.
 const ALL_COMMANDS = [
   'help', 'start', 'look', 'l', 'status', 'inventory', 'i',
   'move', 'm', 'take', 'get', 'pickup', 'drop', 'eat', 'e', 'drink',
@@ -28,7 +24,7 @@ const ALL_COMMANDS = [
   'titles', 'claim-title', 'grant-title', 'house', 'levy', 'court',
   'spells', 'learn', 'cast', 'mana', 'forge',
   'shop', 'browse', 'buy', 'sell', 'haggle',
-  // 'attack', 'fight' — skipped (see KNOWN-BROKEN note above).
+  'attack', 'fight',
   'wait', 'rest',
   'repay', 'loans',
   'gather', 'harvest', 'hunt', 'forage',
@@ -95,4 +91,34 @@ test('commands: aliases map to the same handler (l→look, i→inventory, e→ea
   }
   // If any threw, the test would have failed already.
   assert.ok(true, 'all aliases invoked without throwing');
+});
+
+test('Combat.resolveAttack returns {hit, damage, ...} on direct call', async () => {
+  const { Combat } = await import('../src/systems/Combat.js');
+  const game = makeGameWithPlayer(3535);
+  const player = game.getPlayer();
+  const kernel = game.kernel;
+
+  // Build a stub person with the minimum shape Combat.resolveAttack needs.
+  function makeStubPerson() {
+    return {
+      skills: { combat: { melee: 0.5, defense: 0.5 } },
+      physiology: {
+        getHealthStatus: () => ({ strength: 0.6, health: 1 }),
+        applyInjury: () => {},
+      },
+      equipment: { armor: null },
+    };
+  }
+  const attacker = { ...makeStubPerson(), skills: { combat: { melee: 0.9, defense: 0 } } };
+  const defender = makeStubPerson();
+  const weapon = { mass: 1.0, sharpness: 0.8, type: 'sharp' };
+
+  const result = Combat.resolveAttack(attacker, defender, weapon, 'torso', kernel);
+  assert.ok(result && typeof result === 'object', 'result is an object');
+  assert.ok('hit' in result, 'result has hit property');
+  assert.ok('damage' in result, 'result has damage property');
+  assert.ok(typeof result.hit === 'boolean', 'hit is boolean');
+  assert.ok(typeof result.damage === 'number', 'damage is number');
+  assert.ok(!player || result !== player, 'attack does not return the player object');
 });

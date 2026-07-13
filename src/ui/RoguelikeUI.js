@@ -2,6 +2,7 @@ import blessed from 'blessed';
 import contrib from 'blessed-contrib';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
 
 export class RoguelikeUI {
   constructor(game) {
@@ -836,7 +837,7 @@ export class RoguelikeUI {
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     if (target.alive === false) return this.log(`${target.name} is already dead.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
-    const r = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const r = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     this.log(r.hit ? `Hit ${target.name} for ${(r.damage*100).toFixed(0)}%.` : `Missed.`, 'combat');
   }

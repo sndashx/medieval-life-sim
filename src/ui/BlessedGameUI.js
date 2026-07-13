@@ -16,6 +16,7 @@ import {
   formatGameTime,
 } from './theme.js';
 import { GameQuery } from '../core/GameQuery.js';
+import { Combat } from '../systems/Combat.js';
 
 const FOCUSABLE_PANELS = [
   'map', 'location', 'status', 'sparklines', 'factions',
@@ -2560,7 +2561,7 @@ updateDisplay() {
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(p => p && p.name && p !== player && p.name.toLowerCase().includes(args[0].toLowerCase()));
     if (!target) return this.log(`No "${args[0]}" nearby.`, 'error');
     const weapon = player.inventory?.find?.(i => i.type === 'weapon');
-    const r = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const r = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     if (r.hit) {
       this.log(`Hit ${target.name} in ${r.location} for ${(r.damage*100).toFixed(0)}% damage.`, 'combat');
