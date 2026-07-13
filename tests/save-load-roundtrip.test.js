@@ -99,3 +99,57 @@ test('integration: a save file contains the kernel RNG state and core fields', (
   assert.equal(sd.kernel.turn, 50, 'kernel turn saved');
   assert.ok(Array.isArray(sd.kernel.entities), 'entities serialised as array');
 });
+
+test('integration: save→JSON→load preserves every Person\'s personality (no RNG draw in rehydration)', () => {
+  // Determinism guard for the Person-rehydration fix. After a JSON-roundtrip
+  // save → load, every Person's personality must equal what was serialized.
+  // Without the fix, `new Person(...)` in the rehydration loop calls
+  // `generatePersonality()` (8 RNG draws per person) and every saved
+  // personality gets replaced with a fresh random one. This test catches
+  // the regression by comparing each Person's personality at save-time,
+  // in the JSON, and after load.
+  const SEED = 42;
+  const PRE_TURNS = 200;
+
+  const a = makeGameWithPlayer(SEED);
+  a.advanceTurns(PRE_TURNS);
+  const saveData = a.save();
+  const personalitiesAtSave = new Map();
+  for (const ent of a.kernel.entities.values()) {
+    if (ent && ent.isPerson) personalitiesAtSave.set(ent.id, { ...ent.personality });
+  }
+  assert.ok(personalitiesAtSave.size > 0, 'expected at least one Person in the pre-save world');
+
+  const roundtripped = JSON.parse(JSON.stringify(saveData));
+  // Capture what the JSON preserves so we can assert the saved personalities
+  // were actually serialised.
+  const personalitiesInJson = new Map();
+  for (const [id, ent] of roundtripped.kernel.entities) {
+    if (ent && ent.isPerson && ent.personality) {
+      personalitiesInJson.set(id, { ...ent.personality });
+    }
+  }
+  assert.equal(personalitiesInJson.size, personalitiesAtSave.size,
+    'toJSON must serialise every Person\'s personality');
+  for (const [id, p] of personalitiesAtSave) {
+    assert.deepEqual(personalitiesInJson.get(id), p,
+      `toJSON must serialise Person ${id}'s personality verbatim`);
+  }
+
+  const b = makeGameWithPlayer(SEED);
+  b.load(roundtripped);
+
+  // Personality parity: every Person after load must have the same
+  // personality as it had at save time. If rehydration draws RNG, these
+  // will all differ.
+  let pChecked = 0;
+  for (const [id, expected] of personalitiesAtSave) {
+    const ent = b.kernel.entities.get(id);
+    if (!ent || !ent.isPerson) continue;
+    assert.deepEqual(ent.personality, expected,
+      `Person ${id} personality changed during rehydration`);
+    pChecked++;
+  }
+  assert.equal(pChecked, personalitiesAtSave.size,
+    'every pre-save Person must survive rehydration with personality intact');
+});

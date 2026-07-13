@@ -1387,9 +1387,16 @@ const templates = [
       // Without this step the rest of Game.load (which checks
       // `entity.isPerson`, calls `entity.fromJSON`, `entity.inventory._recomputeWeight`,
       // `entity.physiology.checkVitals`, etc.) operates on props-less objects
-      // and silently no-ops. Rebuild each Person using the saved snapshot as
-      // the constructor template, then call fromJSON() to restore the toJSON
-      // fields (cached health, goals, memory ring, etc.).
+      // and silently no-ops.
+      //
+      // We use `Person.fromSnapshot` instead of `new Person(template, …)`:
+      // the regular constructor draws RNG for `generateGenetics`,
+      // `generatePersonality`, and `nextInterestingTurn`, which would
+      // desync the freshly-loaded kernel RNG from its saved trajectory and
+      // overwrite the saved personality on every person. `fromSnapshot`
+      // rebuilds the same Person shape using only the saved values, so
+      // the kernel RNG state is untouched and personalities survive the
+      // round-trip.
       const savedEntitiesById = new Map();
       if (saveData.kernel && Array.isArray(saveData.kernel.entities)) {
         for (const [id, ent] of saveData.kernel.entities) savedEntitiesById.set(id, ent);
@@ -1401,18 +1408,11 @@ const templates = [
         if (!looksLikePerson) continue;
         if (entity instanceof Person) continue;
         const saved = savedEntitiesById.get(id) || entity;
-        const template = {
-          name: saved.name,
-          age: saved.age,
-          sex: saved.sex,
-          genetics: saved.genetics,
-          position: saved.position,
-          household: saved.household,
-          occupation: saved.occupation,
-          isPlayer: saved.isPlayer
-        };
-        const rehydrated = new Person(id, template, this.kernel);
-        if (typeof rehydrated.fromJSON === 'function') rehydrated.fromJSON(saved);
+        if (!saved) continue;
+        // Merge any extra top-level fields the JSON might have into a
+        // single snapshot for `Person.fromSnapshot`.
+        const snap = { ...saved, id: saved.id ?? id };
+        const rehydrated = Person.fromSnapshot(snap, this.kernel);
         this.kernel.entities.set(id, rehydrated);
       }
 
