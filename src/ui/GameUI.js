@@ -11,6 +11,7 @@
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
 
 export class GameUI {
   constructor(game) {
@@ -410,7 +411,7 @@ export class GameUI {
     const target = nearby.map(id => this.game.kernel.entities.get(id)).find(e => e && e.name && e.name.toLowerCase().includes(args.join(' ').toLowerCase()));
     if (!target) { console.log('Target not found nearby.'); return; }
     const weapon = player.inventory.find(i => i.type === 'weapon');
-    const result = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const result = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     this.game.advanceTurns(1);
     if (result.hit) console.log(`Hit ${target.name} in the ${result.location} for ${(result.damage*100).toFixed(0)}% damage.`);
     else console.log(`You miss ${target.name}.`);

@@ -2,6 +2,7 @@ import readline from 'readline';
 import { stdin as input, stdout as output } from 'process';
 import fs from 'fs';
 import path from 'path';
+import { Combat } from '../systems/Combat.js';
 
 export class EnhancedGameUI {
   constructor(game) {
@@ -1944,7 +1945,7 @@ export class EnhancedGameUI {
     }
     
     const weapon = player.inventory.find(i => i.type === 'weapon');
-    const result = this.game.combat.constructor.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
+    const result = Combat.resolveAttack(player, target, weapon, 'torso', this.game.kernel);
     
     this.game.advanceTurns(1);
     
