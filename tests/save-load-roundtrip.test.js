@@ -51,6 +51,28 @@ test('integration: save and load is byte-equivalent at the save point', () => {
   assert.equal(fpLoaded.conservationPop, fpSaved.conservationPop, 'conservation.population mismatch');
 });
 
+test('integration: load rebinds _kernel on every Person entity', () => {
+  const a = makeGameWithPlayer(42);
+  a.advanceTurns(200);
+  const saveData = a.save();
+
+  const b = makeGameWithPlayer(42);
+  b.load(saveData);
+  b.advanceTurns(50);
+
+  assert.equal(b.player._kernel, b.kernel, 'player._kernel should be the loaded kernel');
+  let checked = 0;
+  for (const entity of b.kernel.entities.values()) {
+    if (!entity || !entity.isPerson) continue;
+    assert.equal(entity._kernel, b.kernel, `Person ${entity.id} _kernel not rebound`);
+    checked++;
+  }
+  assert.ok(checked > 0, 'expected at least one Person in the loaded world');
+  const lit = b.player.nextInterestingTurn;
+  assert.ok(typeof lit === 'number' && Number.isFinite(lit), 'nextInterestingTurn should be a finite number');
+  assert.ok(Math.abs(lit - b.kernel.turn) <= 60, `nextInterestingTurn ${lit} should be within 60 turns of kernel turn ${b.kernel.turn}`);
+});
+
 test('integration: a save file contains the kernel RNG state and core fields', () => {
   const a = makeGameWithPlayer(42);
   a.advanceTurns(50);

@@ -1380,6 +1380,12 @@ const templates = [
       
       this.kernel.load(saveData.kernel);
 
+      for (const entity of this.kernel.entities.values()) {
+        if (entity && entity.isPerson && entity._kernel !== this.kernel) {
+          entity._kernel = this.kernel;
+        }
+      }
+
       const worldGen = new WorldGenerator(saveData.world.seed);
       this.world = worldGen.generate();
       this.world.settlements = saveData.world.settlements;
