@@ -137,21 +137,6 @@ export class Person {
     p._cachedHealthTurn = -1;
     p._goalsStale = true;
     p.update = Person.prototype.update;
-    if (snapshot.needs && p.needs !== snapshot.needs && typeof snapshot.needs === 'object') {
-      for (const k of Object.keys(snapshot.needs)) {
-        if (k === 'physiology') continue;
-        try { p.needs[k] = snapshot.needs[k]; } catch (_) {}
-      }
-    }
-    if (snapshot.inventory && p.inventory !== snapshot.inventory && typeof snapshot.inventory === 'object') {
-      const savedInv = snapshot.inventory;
-      if (Array.isArray(savedInv.items)) {
-        p.inventory.items = [];
-        for (const it of savedInv.items) p.inventory.add(it);
-      }
-      if (typeof savedInv.capacity === 'number') p.inventory.capacity = savedInv.capacity;
-      if (typeof savedInv.weight === 'number') p.inventory.weight = savedInv.weight;
-    }
     return p;
   }
 
