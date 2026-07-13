@@ -1,6 +1,7 @@
 import { Physiology } from './Physiology.js';
 import { Needs, Skills } from './Needs.js';
 import { Inventory } from './Inventory.js';
+import { NPCBridge, AAA_FEATURES } from './aaa-npc/NPCBridge.js';
 
 const MEMORY_RING_SIZE = 256;
 const HEALTH_CACHE_VALID_MS = 60000; // re-compute health at most once per game-minute
@@ -46,6 +47,16 @@ export class Person {
 
     this.type = 'person';
     this.isPerson = true;
+
+    // AAA NPC Bridge (optional, enabled via config)
+    this.aaaBridge = null;
+    if (template.enableAAA || kernel?.config?.enableAAA) {
+      this.aaaBridge = new NPCBridge(this, {
+        enabledFeatures: template.aaaFeatures || kernel?.config?.aaaFeatures || [],
+        syncInterval: template.aaaSyncInterval || kernel?.config?.aaaSyncInterval || 60,
+        lodDistance: kernel?.config?.lodDistance
+      });
+    }
 
     // Lazy tick scheduler — 0 means "tick every turn", default NPC initialises to a
     // staggered future turn so the first update doesn't synchronise across the whole world.
@@ -100,6 +111,11 @@ export class Person {
 
     const urgent = this._computeUrgentNeeds();
 
+    // Update AAA NPC systems if enabled (respects same tick scheduler)
+    if (this.aaaBridge) {
+      this.aaaBridge.update(kernel);
+    }
+
     if (!this.isPlayer) {
       if (this._goalsStale || this.lastUrgentNeeds !== urgent) {
         this._planGoals(urgent, kernel);
@@ -137,6 +153,17 @@ export class Person {
   }
 
   _planGoals(urgentMask, kernel) {
+    // Try AAA decision system first if enabled
+    if (this.aaaBridge && this.aaaBridge.isFeatureEnabled(AAA_FEATURES.DECISIONS)) {
+      const context = this.aaaBridge.buildContext(kernel);
+      const aaaGoals = this.aaaBridge.planGoals(context);
+      if (aaaGoals && aaaGoals.length > 0) {
+        this.goals = aaaGoals;
+        return;
+      }
+    }
+
+    // Fallback to legacy goal planning
     const goals = [];
     if (urgentMask & 1) goals.push({ type: 'satisfy_need', need: 'hunger', priority: 10 });
     if (urgentMask & 2) goals.push({ type: 'satisfy_need', need: 'thirst', priority: 10 });
@@ -503,6 +530,12 @@ export class Person {
   }
 
   getStatus() {
+    // Use AAA bridge status if available
+    if (this.aaaBridge) {
+      return this.aaaBridge.getStatus();
+    }
+
+    // Fallback to legacy status
     const health = this.getHealthStatus();
     return {
       name: this.name,
@@ -576,7 +609,7 @@ export class Person {
    *   convert to Array of [id, bond] so JSON preserves it.
    */
   toJSON() {
-    return {
+    const data = {
       _cachedHealth: this._cachedHealth || null,
       _cachedHealthTurn: this._cachedHealthTurn,
       nextInterestingTurn: this.nextInterestingTurn,
@@ -590,6 +623,13 @@ export class Person {
       kinship: this.kinship,
       memory: serializeMemory(this.memory)
     };
+
+    // Serialize AAA bridge if present
+    if (this.aaaBridge) {
+      data.aaaBridge = this.aaaBridge.serialize();
+    }
+
+    return data;
   }
 
   /**
@@ -619,6 +659,11 @@ export class Person {
     if (snapshot.kinship) this.kinship = snapshot.kinship;
     if (snapshot.relationships) this.relationships = deserializeRelationships(snapshot.relationships);
     if (snapshot.memory) this.memory = deserializeMemory(snapshot.memory);
+
+    // Deserialize AAA bridge if present
+    if (snapshot.aaaBridge) {
+      this.aaaBridge = NPCBridge.deserialize(snapshot.aaaBridge, this);
+    }
   }
 }
 

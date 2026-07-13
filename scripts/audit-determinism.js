@@ -25,6 +25,14 @@ const SRC = join(ROOT, 'src');
 const MANUAL_WHITELIST = new Map([
   // Date.now() in save/load filename metadata — not part of simulation state.
   // ['src/main.js:12', 'save-filename timestamp'],
+  
+  // Migration tracking uses wall-clock time for performance metrics (not game simulation)
+  ['src/character/aaa-npc/migration.js:29', 'migration performance tracking'],
+  ['src/character/aaa-npc/migration.js:46', 'migration performance tracking'],
+  ['src/character/aaa-npc/migration.js:57', 'migration performance tracking'],
+  
+  // AAANPC.js: Math.random() fallback when kernel not provided (tests only)
+  ['src/character/aaa-npc/AAANPC.js:25', 'fallback RNG for tests without kernel'],
 ]);
 
 const PATTERNS = [

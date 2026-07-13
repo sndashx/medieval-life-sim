@@ -6,6 +6,8 @@ import { Perception, Vision, Hearing, Smell, Attention } from './systems/Percept
 import { Locomotion } from './systems/Locomotion.js';
 import { Household } from './systems/Social.js';
 import { NPCCoordinator } from './character/NPCCoordinator.js';
+import { AAAConfig, AAA_PRESETS } from './character/aaa-npc/config.js';
+import { createMigrationEngine } from './character/aaa-npc/migration.js';
 
 const REGIONAL_DEFAULT_INTERVAL = 60; // minutes per regional tick (1 hour)
 const IDLE_NPC_NEXT_TURN_SKIP = 1440; // idle NPCs skipped for a full game-day
@@ -13,7 +15,8 @@ const IDLE_NPC_NEXT_TURN_SKIP = 1440; // idle NPCs skipped for a full game-day
 // T7-1: schemaVersion increments when save/load fields change shape. Older
 // saves load best-effort with a console warning so we don't silently lose
 // data after a refactor.
-export const SAVE_SCHEMA_VERSION = 2;
+// Version 3: Added aaaConfig field for AAA NPC system configuration
+export const SAVE_SCHEMA_VERSION = 3;
 
 export class Game {
   constructor(seed, worldConfig = null, options = {}) {
@@ -22,6 +25,15 @@ export class Game {
     // mode or test scenarios.
     this.autoFeed = options.autoFeed !== false;
     this._uiListeners = new Set();
+    
+    // AAA NPC configuration
+    this.aaaConfig = null;
+    if (options.aaaPreset) {
+      this.aaaConfig = AAAConfig.loadPreset(options.aaaPreset);
+    } else if (options.aaaConfig) {
+      this.aaaConfig = new AAAConfig(options.aaaConfig);
+    }
+    
     console.log('  → Initializing simulation kernel...');
     this.seed = seed || Date.now(); // AUDIT-WHITELIST: cli seed fallback
     this.worldConfig = worldConfig || {
@@ -33,6 +45,17 @@ export class Game {
       populationMax: 500
     };
     this.kernel = new SimulationKernel(this.seed);
+    
+    // Attach AAA config to kernel for Person access
+    if (this.aaaConfig) {
+      Object.defineProperty(this.kernel, 'config', {
+        value: this.aaaConfig.config,
+        writable: false,
+        enumerable: false,
+        configurable: true
+      });
+    }
+    
     // Back-reference so Person.die can reach this.kinship / this.factions
     // without circular-importing Social.js. Defined non-enumerable so
     // JSON.stringify(saveData) doesn't trip on the circular graph.
@@ -64,6 +87,12 @@ export class Game {
 
     console.log('\n👥 Populating world...');
     this.populateWorld();
+    
+    // Migrate existing NPCs to AAA if enabled
+    if (this.aaaConfig && this.aaaConfig.config.migration?.autoMigrate) {
+      console.log('\n🔄 Migrating NPCs to AAA system...');
+      this._migrateToAAA();
+    }
 
     // T3-1: promote ~10% of the regional-tier population to the active tier
     // so most NPCs are visible and acting. Bias toward high-traffic
@@ -1217,6 +1246,7 @@ const templates = [
     return {
       schemaVersion: SAVE_SCHEMA_VERSION,
       seed: this.seed,
+      aaaConfig: this.aaaConfig ? this.aaaConfig.config : null,
       kernel: this.kernel.save(),
       world: {
         seed: this.world.seed,
@@ -1333,6 +1363,21 @@ const templates = [
         );
       }
       this.seed = saveData.seed;
+      
+      // Restore AAA config if present
+      if (saveData.aaaConfig) {
+        this.aaaConfig = new AAAConfig(saveData.aaaConfig);
+        // Reattach to kernel
+        if (this.kernel) {
+          Object.defineProperty(this.kernel, 'config', {
+            value: this.aaaConfig.config,
+            writable: false,
+            enumerable: false,
+            configurable: true
+          });
+        }
+      }
+      
       this.kernel.load(saveData.kernel);
 
       const worldGen = new WorldGenerator(saveData.world.seed);
@@ -1525,6 +1570,70 @@ const templates = [
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Migrate existing NPCs to AAA system
+   * Called during initialization if autoMigrate is enabled
+   */
+  _migrateToAAA() {
+    if (!this.aaaConfig) return;
+    
+    const config = this.aaaConfig.config;
+    const migrationEngine = createMigrationEngine(
+      config.migration?.preset || 'balanced',
+      {
+        enabledFeatures: config.aaaFeatures || [],
+        syncInterval: config.aaaSyncInterval || 60,
+        lodDistance: config.lodDistance,
+        batchSize: config.migration?.migrationBatchSize || 100,
+        logProgress: config.migration?.logMigration !== false
+      }
+    );
+    
+    // Collect all NPCs (exclude player)
+    const npcs = [];
+    for (const entity of this.kernel.entities.values()) {
+      if (!entity || !entity.isPerson || entity.isPlayer) continue;
+      npcs.push(entity);
+    }
+    
+    if (npcs.length === 0) {
+      console.log('  → No NPCs to migrate');
+      return;
+    }
+    
+    // Run synchronous migration (async would complicate initialization)
+    const status = migrationEngine.status;
+    status.start(npcs.length);
+    
+    for (const npc of npcs) {
+      const result = migrationEngine.migratePerson(npc);
+      if (result.success) {
+        status.success();
+      } else {
+        status.fail({
+          personId: npc.id,
+          personName: npc.name,
+          errors: result.errors,
+          warnings: result.warnings
+        });
+      }
+    }
+    
+    status.complete();
+    console.log(`  ${status.getSummary()}`);
+    
+    if (status.failed > 0 && config.migration?.logMigration) {
+      console.warn(`  ⚠️  ${status.failed} NPCs failed to migrate`);
+      if (status.errors.length > 0) {
+        console.warn('  First 5 errors:');
+        for (let i = 0; i < Math.min(5, status.errors.length); i++) {
+          const err = status.errors[i];
+          console.warn(`    - ${err.personName} (${err.personId}): ${err.errors.join(', ')}`);
+        }
+      }
     }
   }
 
