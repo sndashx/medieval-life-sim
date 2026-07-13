@@ -23,11 +23,13 @@ const ui = new RoguelikeUI(game);
 // Start the game
 ui.start();
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  process.exit(0);
-});
+// Handle graceful shutdown — defer to the UI so it can confirm before quitting.
+const shutdown = () => {
+  if (ui && typeof ui._confirmQuit === 'function') {
+    ui._confirmQuit();
+  } else {
+    process.exit(0);
+  }
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

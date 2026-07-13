@@ -17,6 +17,7 @@ import {
 } from './theme.js';
 import { GameQuery } from '../core/GameQuery.js';
 import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
 
 const FOCUSABLE_PANELS = [
   'map', 'location', 'status', 'sparklines', 'factions',
@@ -322,14 +323,14 @@ export class BlessedGameUI {
   }
 
   setupKeybindings() {
-    this.screen.key(['C-c'], () => process.exit(0));
+    this.screen.key(['C-c'], () => this._confirmQuit());
     this.screen.key(['escape'], () => {
       if (this._helpOverlay && !this._helpOverlay.hidden) { this._toggleHelpOverlay(); return; }
       if (this._heirPicker && !this._heirPicker.hidden) { this._closeHeirPicker(); return; }
       if (this._creationWizard && !this._creationWizard.hidden) { this._closeCharacterCreation(); return; }
-      return process.exit(0);
+      return this._confirmQuit();
     });
-    this.screen.key(['q'], () => process.exit(0));
+    this.screen.key(['q'], () => this._confirmQuit());
 
     this.screen.key(['tab'], () => {
       if (this.screen.focused === this.commandInput) return;
@@ -352,6 +353,13 @@ export class BlessedGameUI {
         this._commandHistory.push(trimmed);
         if (this._commandHistory.length > 50) this._commandHistory.shift();
         this._commandHistoryIdx = this._commandHistory.length;
+        if (this._quitConfirmPending) {
+          this._resolveQuitConfirm(trimmed);
+          this.commandInput.clearValue();
+          this._commandHistoryIdx = this._commandHistory.length;
+          this.screen.render();
+          return;
+        }
         this.handleCommand(trimmed);
       }
       this.commandInput.clearValue();
@@ -1614,8 +1622,8 @@ updateDisplay() {
       'heirs': () => this.listHeirs(),
       'save': () => this.save(),
       'load': () => this.load(),
-      'quit': () => process.exit(0),
-      'exit': () => process.exit(0)
+      'quit': () => this._confirmQuit(),
+      'exit': () => this._confirmQuit()
     };
     
     if (commands[command]) {
@@ -2111,21 +2119,38 @@ updateDisplay() {
     try {
       const saveData = this.game.save();
       const saveDir = path.join(process.cwd(), 'saves');
-      
+
       if (!fs.existsSync(saveDir)) {
         fs.mkdirSync(saveDir, { recursive: true });
       }
-      
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `save_${this.game.player?.name || 'unknown'}_${timestamp}.json`;
       const filepath = path.join(saveDir, filename);
-      
+
       fs.writeFileSync(filepath, JSON.stringify(saveData, null, 2));
-      
+
       this.log(`Game saved to: ${filename}`, 'success');
     } catch (error) {
       this.log(`Failed to save: ${error.message}`, 'error');
     }
+  }
+
+  _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    this.log('Save before quitting? [y/N/cancel] (type your answer and press Enter)', 'system');
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' y/N/cancel '); } catch (_) {}
+    if (this.commandInput && typeof this.commandInput.focus === 'function') {
+      try { this.commandInput.focus(); this.screen.render(); } catch (_) {}
+    }
+  }
+
+  async _resolveQuitConfirm(input) {
+    const answer = await performQuit(this, (_q, cb) => cb(input));
+    this._quitConfirmPending = false;
+    try { if (this.commandInput && typeof this.commandInput.setLabel === 'function') this.commandInput.setLabel(' Command [Tab: autocomplete] '); } catch (_) {}
+    return answer;
   }
 
   load() {

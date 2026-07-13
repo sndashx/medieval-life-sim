@@ -12,6 +12,7 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
 
 export class GameUI {
   constructor(game) {
@@ -70,7 +71,7 @@ export class GameUI {
       'load': () => this.load(),
       'continue': () => this.continueAsHeir(args),
       'heirs': () => this.listHeirs(),
-      'quit': () => process.exit(0)
+      'quit': () => this._confirmQuit()
     };
     if (commands[command]) {
       try { commands[command](); }
@@ -424,6 +425,21 @@ export class GameUI {
   }
 
   toggleDevMode() { this.devMode = !this.devMode; console.log(`Developer mode: ${this.devMode ? 'ON' : 'OFF'}`); }
+
+  async _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    try {
+      const answer = await performQuit(this);
+      if (answer === 'save-exit' || answer === 'exit-on-save-fail' || answer === 'exit') {
+        try { this.rl.close(); } catch (_) {}
+      } else if (answer === 'cancel') {
+        try { this.rl.prompt(); } catch (_) {}
+      }
+    } finally {
+      this._quitConfirmPending = false;
+    }
+  }
 
   save() {
     try {

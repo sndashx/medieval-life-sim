@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from 'process';
 import fs from 'fs';
 import path from 'path';
 import { Combat } from '../systems/Combat.js';
+import { performQuit } from './quitConfirm.js';
 
 export class EnhancedGameUI {
   constructor(game) {
@@ -59,6 +60,12 @@ export class EnhancedGameUI {
       this.log('Goodbye!', 'system');
       process.exit(0);
     });
+
+    if (typeof process !== 'undefined') {
+      const handleSig = () => this._confirmQuit();
+      process.on('SIGINT', handleSig);
+      process.on('SIGTERM', handleSig);
+    }
   }
 
   clearScreen() {
@@ -3348,9 +3355,24 @@ export class EnhancedGameUI {
     else this.log('Council session failed.', 'error');
   }
 
+  async _confirmQuit() {
+    if (this._quitConfirmPending) return;
+    this._quitConfirmPending = true;
+    try {
+      const answer = await performQuit(this);
+      if (answer === 'save-exit' || answer === 'exit-on-save-fail' || answer === 'exit') {
+        this.log('Ending life...', 'system');
+        try { this.rl.close(); } catch (_) {}
+      } else if (answer === 'cancel') {
+        try { this.rl.prompt(); } catch (_) {}
+      }
+    } finally {
+      this._quitConfirmPending = false;
+    }
+  }
+
   quit() {
-    this.log('Ending life...', 'system');
-    this.rl.close();
+    return this._confirmQuit();
   }
 
   // Utility methods
